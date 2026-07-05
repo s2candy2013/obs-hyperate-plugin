@@ -37,7 +37,11 @@ jobs:
         env:
           HYPERATE_API_TOKEN_SECRET: ${{ secrets.HYPERATE_API_TOKEN }}
         run: |
-          libobs_config="$(find .deps/obs-install .deps/obs-build \( -name libobsConfig.cmake -o -name libobs-config.cmake \) | head -n 1)"
+          search_dirs=(.deps/obs-build)
+          if [[ -d .deps/obs-install ]]; then
+            search_dirs+=(.deps/obs-install)
+          fi
+          libobs_config="$(find "${search_dirs[@]}" \( -name libobsConfig.cmake -o -name libobs-config.cmake \) | head -n 1)"
           libobs_dir="$(dirname "${libobs_config}")"
 
           token_arg=()

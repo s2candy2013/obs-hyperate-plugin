@@ -445,7 +445,8 @@ void output_heartbeat_audio(ThresholdToggleSource *toggle, const hyperate::Heart
 		toggle->last_audio_ts = now - 20000000ULL;
 
 	const uint64_t elapsed_ns = now - toggle->last_audio_ts;
-	uint32_t frames = (uint32_t)std::clamp((elapsed_ns * (uint64_t)sample_rate) / nsec_per_sec, 1ULL, 4096ULL);
+	const uint64_t elapsed_frames = (elapsed_ns * (uint64_t)sample_rate) / nsec_per_sec;
+	uint32_t frames = (uint32_t)std::clamp<uint64_t>(elapsed_frames, 1ULL, 4096ULL);
 	toggle->audio_buffer.assign(frames, 0.0f);
 
 	const double target_gate = active ? 1.0 : 0.0;
