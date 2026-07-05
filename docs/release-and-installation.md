@@ -118,5 +118,6 @@ Then restart OBS.
 
 - macOS builds are not signed or notarized yet.
 - Windows builds are not code-signed yet.
+- Windows packages bundle only the plugin's WebSocket runtime DLLs. OBS/FFmpeg runtime DLLs are expected to come from the user's OBS installation.
 - Linux builds target Ubuntu 24.04 x86_64 first.
 - The workflow is a first release pipeline and may need one or two CI iterations to match OBS runner dependency details exactly.

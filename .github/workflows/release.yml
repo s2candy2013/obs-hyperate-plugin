@@ -259,8 +259,28 @@ jobs:
 
           Copy-Item "build_x64/RelWithDebInfo/obs-hyperate.dll" $binDir
           Copy-Item "data/*" $dataDir -Recurse
-          Copy-Item "$env:OBS_DEPS_DIR/bin/*.dll" $binDir -ErrorAction SilentlyContinue
-          Copy-Item "$env:VCPKG_INSTALLED_DIR/bin/*.dll" $binDir -ErrorAction SilentlyContinue
+
+          # OBS ships its own FFmpeg/libobs runtime DLLs. Only bundle the
+          # WebSocket runtime that this plugin adds, otherwise the Windows ZIP
+          # grows by tens of MB with DLLs OBS already has.
+          $runtimeDlls = @(
+            "websockets.dll",
+            "libssl-3-x64.dll",
+            "libcrypto-3-x64.dll",
+            "uv.dll",
+            "z.dll",
+            "zlib.dll",
+            "pthreadVC3.dll",
+            "pthreadVCE3.dll",
+            "pthreadVSE3.dll",
+            "legacy.dll"
+          )
+          foreach ($dll in $runtimeDlls) {
+            $source = Join-Path "$env:VCPKG_INSTALLED_DIR/bin" $dll
+            if (Test-Path $source) {
+              Copy-Item $source $binDir
+            }
+          }
 
           Compress-Archive -Path $packageRoot -DestinationPath (Join-Path $releaseDir "obs-hyperate-${version}-windows-x64.zip") -Force
 
