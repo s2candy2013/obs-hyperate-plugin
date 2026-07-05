@@ -251,7 +251,15 @@ void HyperateClient::run()
 	lws_context_creation_info info{};
 	info.port = CONTEXT_PORT_NO_LISTEN;
 	info.protocols = protocols;
-	info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+	// Do NOT set LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT here. OBS and other bundled
+	// plugins (e.g. obs-websocket) already use OpenSSL in this same process. With
+	// that flag, libwebsockets runs the matching OpenSSL global *de-init* when the
+	// context is destroyed on Disconnect, tearing shared OpenSSL state out from
+	// under OBS. The first connect then works, but every later connect fails in
+	// lws_context_init_client_ssl ("Could not create WebSocket context"). OpenSSL
+	// 3 auto-initialises on first use, so leaving this unset keeps TLS working
+	// while making connect/disconnect cycles repeatable.
+	info.options = 0;
 	info.uid = -1;
 	info.gid = -1;
 
