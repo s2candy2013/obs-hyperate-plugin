@@ -203,11 +203,22 @@ jobs:
             throw "Could not find libobsConfig.cmake"
           }
 
+          $prefixPaths = @(
+            $env:OBS_DEPS_DIR,
+            (Resolve-Path ".deps/obs-build").Path,
+            (Resolve-Path ".deps/obs-build/deps/w32-pthreads").Path
+          )
+
           $args = @(
             "--preset", "windows-x64",
             "-Dlibobs_DIR=$($libobsConfig.Directory.FullName)",
-            "-DCMAKE_PREFIX_PATH=$env:OBS_DEPS_DIR"
+            "-DCMAKE_PREFIX_PATH=$($prefixPaths -join ';')"
           )
+
+          $w32PthreadsConfig = Get-ChildItem ".deps/obs-build" -Recurse -Include "w32-pthreadsConfig.cmake", "w32-pthreads-config.cmake" | Select-Object -First 1
+          if ($null -ne $w32PthreadsConfig) {
+            $args += "-Dw32-pthreads_DIR=$($w32PthreadsConfig.Directory.FullName)"
+          }
 
           if ($env:HYPERATE_API_TOKEN_SECRET) {
             $args += "-DHYPERATE_API_TOKEN=$env:HYPERATE_API_TOKEN_SECRET"
