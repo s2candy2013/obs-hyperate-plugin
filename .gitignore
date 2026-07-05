@@ -1,0 +1,7 @@
+build/
+build_*/
+.deps/
+.DS_Store
+*.user
+*.suo
+*.xcodeproj/

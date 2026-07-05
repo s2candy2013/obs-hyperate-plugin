@@ -1,0 +1,30 @@
+{
+  "dependencies": {
+    "obs-studio": {
+      "version": "31.1.1",
+      "baseUrl": "https://github.com/obsproject/obs-studio/archive/refs/tags",
+      "label": "OBS sources"
+    },
+    "prebuilt": {
+      "version": "2025-07-11",
+      "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
+      "label": "Pre-Built obs-deps"
+    },
+    "qt6": {
+      "version": "2025-07-11",
+      "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
+      "label": "Pre-Built Qt6"
+    }
+  },
+  "platformConfig": {
+    "macos": {
+      "bundleId": "io.hyperate.obs.plugin"
+    }
+  },
+  "name": "obs-hyperate",
+  "displayName": "OBS HypeRate",
+  "version": "0.1.0",
+  "author": "HypeRate OBS Plugin Contributors",
+  "website": "https://www.hyperate.io",
+  "email": ""
+}

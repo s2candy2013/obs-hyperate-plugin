@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>English</string>
+  <key>CFBundleExecutable</key>
+  <string>@_name@</string>
+  <key>CFBundleIdentifier</key>
+  <string>@MACOS_BUNDLEID@</string>
+  <key>CFBundleName</key>
+  <string>@PLUGIN_DISPLAY_NAME@</string>
+  <key>CFBundleDisplayName</key>
+  <string>@PLUGIN_DISPLAY_NAME@</string>
+  <key>CFBundlePackageType</key>
+  <string>BNDL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>@PLUGIN_VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@PLUGIN_VERSION@</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>@PLUGIN_AUTHOR@</string>
+</dict>
+</plist>
