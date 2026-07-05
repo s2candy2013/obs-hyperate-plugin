@@ -79,20 +79,21 @@ obs-hyperate-<version>-windows-x64.zip
 Unzip it. Copy the contained:
 
 ```text
-obs-hyperate
+obs-plugins
+data
 ```
 
-folder to:
+folders into your OBS Studio installation folder, usually:
 
 ```text
-%APPDATA%\obs-studio\plugins\
+C:\Program Files\obs-studio\
 ```
 
 The final layout should look like:
 
 ```text
-%APPDATA%\obs-studio\plugins\obs-hyperate\bin\64bit\obs-hyperate.dll
-%APPDATA%\obs-studio\plugins\obs-hyperate\data\locale\de-DE.ini
+C:\Program Files\obs-studio\obs-plugins\64bit\obs-hyperate.dll
+C:\Program Files\obs-studio\data\obs-plugins\obs-hyperate\locale\de-DE.ini
 ```
 
 Then restart OBS.
@@ -103,7 +104,13 @@ Installer alternative:
 obs-hyperate-<version>-windows-x64-installer.exe
 ```
 
-This installs the plugin for the current Windows user to:
+This installs the plugin into the selected OBS Studio installation folder, usually:
+
+```text
+C:\Program Files\obs-studio\
+```
+
+It also removes the old pre-0.1.3 per-user install folder if it exists:
 
 ```text
 %APPDATA%\obs-studio\plugins\obs-hyperate
@@ -156,7 +163,7 @@ This installs the plugin for the current Linux user to:
 - macOS builds are not signed or notarized yet.
 - macOS PKG installers are unsigned and install system-wide.
 - Windows builds are not code-signed yet.
-- Windows EXE installers are unsigned and install per-user.
+- Windows EXE installers are unsigned and install into the selected OBS Studio installation folder. Administrator permission is normally required for `C:\Program Files\obs-studio`.
 - Windows packages bundle only the plugin's WebSocket runtime DLLs. OBS/FFmpeg runtime DLLs are expected to come from the user's OBS installation.
 - Linux `.run` installers are self-extracting shell installers and install per-user.
 - Linux builds target Ubuntu 24.04 x86_64 first.

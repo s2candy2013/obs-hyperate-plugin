@@ -288,9 +288,9 @@ jobs:
             $version = (Get-Content buildspec.json -Raw | ConvertFrom-Json).version
           }
 
-          $packageRoot = Join-Path $PWD "package/obs-hyperate"
-          $binDir = Join-Path $packageRoot "bin/64bit"
-          $dataDir = Join-Path $packageRoot "data"
+          $packageRoot = Join-Path $PWD "package/obs-studio"
+          $binDir = Join-Path $packageRoot "obs-plugins/64bit"
+          $dataDir = Join-Path $packageRoot "data/obs-plugins/obs-hyperate"
           $releaseDir = Join-Path $PWD "release"
           New-Item -ItemType Directory -Force -Path $binDir, $dataDir, $releaseDir | Out-Null
 
@@ -319,7 +319,7 @@ jobs:
             }
           }
 
-          Compress-Archive -Path $packageRoot -DestinationPath (Join-Path $releaseDir "obs-hyperate-${version}-windows-x64.zip") -Force
+          Compress-Archive -Path "$packageRoot/*" -DestinationPath (Join-Path $releaseDir "obs-hyperate-${version}-windows-x64.zip") -Force
 
           $installerScript = Join-Path $PWD "obs-hyperate-installer.nsi"
           @'
@@ -327,8 +327,8 @@ jobs:
 
           Name "OBS HypeRate"
           OutFile "release\obs-hyperate-${VERSION}-windows-x64-installer.exe"
-          InstallDir "$APPDATA\obs-studio\plugins\obs-hyperate"
-          RequestExecutionLevel user
+          InstallDir "$PROGRAMFILES64\obs-studio"
+          RequestExecutionLevel admin
           ShowInstDetails show
           ShowUninstDetails show
 
@@ -341,13 +341,14 @@ jobs:
           !insertmacro MUI_LANGUAGE "English"
 
           Section "Install"
-            RMDir /r "$INSTDIR"
-            CreateDirectory "$INSTDIR"
-            SetOutPath "$INSTDIR"
-            File /r "package\obs-hyperate\*.*"
-            WriteUninstaller "$INSTDIR\Uninstall.exe"
+            RMDir /r "$APPDATA\obs-studio\plugins\obs-hyperate"
+            SetOutPath "$INSTDIR\obs-plugins\64bit"
+            File /r "package\obs-studio\obs-plugins\64bit\*.*"
+            SetOutPath "$INSTDIR\data\obs-plugins\obs-hyperate"
+            File /r "package\obs-studio\data\obs-plugins\obs-hyperate\*.*"
+            WriteUninstaller "$INSTDIR\data\obs-plugins\obs-hyperate\Uninstall.exe"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate" "DisplayName" "OBS HypeRate"
-            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate" "UninstallString" "$INSTDIR\Uninstall.exe"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate" "UninstallString" "$\"$INSTDIR\data\obs-plugins\obs-hyperate\Uninstall.exe$\""
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate" "DisplayVersion" "${VERSION}"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate" "Publisher" "HypeRate"
           SectionEnd
@@ -355,7 +356,18 @@ jobs:
           Section "Uninstall"
             DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate"
             SetOutPath "$TEMP"
-            RMDir /r "$INSTDIR"
+            Delete "$INSTDIR\obs-plugins\64bit\obs-hyperate.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\websockets.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\libssl-3-x64.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\libcrypto-3-x64.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\uv.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\z.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\zlib.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\pthreadVC3.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\pthreadVCE3.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\pthreadVSE3.dll"
+            Delete "$INSTDIR\obs-plugins\64bit\legacy.dll"
+            RMDir /r "$INSTDIR\data\obs-plugins\obs-hyperate"
           SectionEnd
           '@ | Set-Content -Path $installerScript -Encoding ASCII
 
