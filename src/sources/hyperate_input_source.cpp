@@ -141,24 +141,13 @@ void publish_status(HyperateInputSource *input, const std::string &status)
 	request_properties_refresh(input, false);
 }
 
-void update_connection_button_label(obs_property_t *property, const HyperateInputSource *input)
-{
-	if (!property || !input)
-		return;
-
-	obs_property_set_description(property, is_connected_or_connecting(input) ? obs_module_text("Source.Disconnect")
-										 : obs_module_text("Source.Connect"));
-}
-
-bool connection_toggle_clicked(obs_properties_t *, obs_property_t *property, void *data)
+bool connection_toggle_clicked(obs_properties_t *, obs_property_t *, void *data)
 {
 	auto *input = static_cast<HyperateInputSource *>(data);
 	if (is_connected_or_connecting(input)) {
 		input->client->stop();
 		input->status_note = "Disconnected";
 		publish_status(input, input->status_note);
-		request_properties_refresh(input, true);
-		update_connection_button_label(property, input);
 		return true;
 	}
 
@@ -169,8 +158,6 @@ bool connection_toggle_clicked(obs_properties_t *, obs_property_t *property, voi
 	if (config.channel_id.empty()) {
 		input->status_note = obs_module_text("Source.Status.EnterId");
 		publish_status(input, input->status_note);
-		request_properties_refresh(input, true);
-		update_connection_button_label(property, input);
 		return true;
 	}
 
@@ -178,8 +165,6 @@ bool connection_toggle_clicked(obs_properties_t *, obs_property_t *property, voi
 	input->client->start(std::move(config));
 	input->status_note = "Connecting";
 	publish_status(input, input->status_note);
-	request_properties_refresh(input, true);
-	update_connection_button_label(property, input);
 	return true;
 }
 

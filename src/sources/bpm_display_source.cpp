@@ -8,6 +8,10 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -409,6 +413,157 @@ void ensure_system_font_texture(BpmDisplaySource *display, const std::string &te
 	display->cached_font_face = display->font_face;
 	display->cached_font_size = display->font_size;
 	display->cached_font_flags = display->font_flags;
+#elif defined(_WIN32)
+	if (display->width == 0 || display->height == 0 || text.empty())
+		return;
+
+	const int width = (int)display->width;
+	const int height = (int)display->height;
+	std::vector<uint8_t> pixels((size_t)width * (size_t)height * 4, 0);
+
+	HDC screen_dc = GetDC(nullptr);
+	if (!screen_dc)
+		return;
+
+	HDC memory_dc = CreateCompatibleDC(screen_dc);
+	if (!memory_dc) {
+		ReleaseDC(nullptr, screen_dc);
+		return;
+	}
+
+	BITMAPINFO bitmap_info = {};
+	bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bitmap_info.bmiHeader.biWidth = width;
+	bitmap_info.bmiHeader.biHeight = -height;
+	bitmap_info.bmiHeader.biPlanes = 1;
+	bitmap_info.bmiHeader.biBitCount = 32;
+	bitmap_info.bmiHeader.biCompression = BI_RGB;
+
+	void *bitmap_bits = nullptr;
+	HBITMAP bitmap = CreateDIBSection(screen_dc, &bitmap_info, DIB_RGB_COLORS, &bitmap_bits, nullptr, 0);
+	ReleaseDC(nullptr, screen_dc);
+	if (!bitmap || !bitmap_bits) {
+		DeleteDC(memory_dc);
+		return;
+	}
+
+	HGDIOBJ old_bitmap = SelectObject(memory_dc, bitmap);
+	RECT full_rect{0, 0, width, height};
+	HBRUSH black_brush = (HBRUSH)GetStockObject(BLACK_BRUSH);
+	FillRect(memory_dc, &full_rect, black_brush);
+	SetBkMode(memory_dc, TRANSPARENT);
+	SetTextColor(memory_dc, RGB(255, 255, 255));
+
+	auto utf8_to_wide = [](const std::string &value) {
+		if (value.empty())
+			return std::wstring();
+
+		int count = MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, nullptr, 0);
+		if (count <= 0)
+			return std::wstring();
+
+		std::wstring output((size_t)count, L'\0');
+		if (!MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, output.data(), count))
+			return std::wstring();
+		if (!output.empty() && output.back() == L'\0')
+			output.pop_back();
+		return output;
+	};
+
+	const std::wstring wide_text = utf8_to_wide(text);
+	if (wide_text.empty()) {
+		SelectObject(memory_dc, old_bitmap);
+		DeleteObject(bitmap);
+		DeleteDC(memory_dc);
+		return;
+	}
+
+	std::wstring wide_face = utf8_to_wide(display->font_face);
+	if (wide_face.empty())
+		wide_face = L"Arial";
+
+	auto create_font = [&](int pixel_size) {
+		LOGFONTW font = {};
+		font.lfHeight = -std::max(8, pixel_size);
+		font.lfWeight = (display->font_flags & OBS_FONT_BOLD) ? FW_BOLD : FW_NORMAL;
+		font.lfItalic = (display->font_flags & OBS_FONT_ITALIC) ? TRUE : FALSE;
+		font.lfCharSet = DEFAULT_CHARSET;
+		font.lfQuality = ANTIALIASED_QUALITY;
+		wcsncpy_s(font.lfFaceName, wide_face.c_str(), _TRUNCATE);
+		return CreateFontIndirectW(&font);
+	};
+
+	auto measure_text = [&](HFONT font, RECT *rect) {
+		HGDIOBJ old_font = SelectObject(memory_dc, font);
+		*rect = RECT{0, 0, width, height};
+		DrawTextW(memory_dc, wide_text.c_str(), -1, rect, DT_SINGLELINE | DT_NOPREFIX | DT_CALCRECT);
+		SelectObject(memory_dc, old_font);
+	};
+
+	const int max_text_width = std::max(1, (int)((double)width * 0.92));
+	const int max_text_height = std::max(1, (int)((double)height * 0.84));
+	int effective_font_size = std::min(display->font_size, max_text_height);
+	HFONT font = create_font(effective_font_size);
+	if (!font) {
+		SelectObject(memory_dc, old_bitmap);
+		DeleteObject(bitmap);
+		DeleteDC(memory_dc);
+		return;
+	}
+
+	RECT measured{};
+	measure_text(font, &measured);
+	const int measured_width = std::max(1, measured.right - measured.left);
+	const int measured_height = std::max(1, measured.bottom - measured.top);
+	if (measured_width > max_text_width || measured_height > max_text_height) {
+		const double width_scale = (double)max_text_width / (double)measured_width;
+		const double height_scale = (double)max_text_height / (double)measured_height;
+		effective_font_size =
+			std::max(8, (int)std::floor((double)effective_font_size * std::min(width_scale, height_scale)));
+		DeleteObject(font);
+		font = create_font(effective_font_size);
+		if (!font) {
+			SelectObject(memory_dc, old_bitmap);
+			DeleteObject(bitmap);
+			DeleteDC(memory_dc);
+			return;
+		}
+	}
+
+	HGDIOBJ old_font = SelectObject(memory_dc, font);
+	DrawTextW(memory_dc, wide_text.c_str(), -1, &full_rect,
+		  DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	SelectObject(memory_dc, old_font);
+	DeleteObject(font);
+
+	const uint8_t red = (uint8_t)((color >> 0) & 0xFF);
+	const uint8_t green = (uint8_t)((color >> 8) & 0xFF);
+	const uint8_t blue = (uint8_t)((color >> 16) & 0xFF);
+	const uint8_t alpha = (uint8_t)((color >> 24) & 0xFF);
+	const auto *source = static_cast<const uint8_t *>(bitmap_bits);
+	for (size_t i = 0; i < (size_t)width * (size_t)height; ++i) {
+		const uint8_t mask = std::max(source[(i * 4) + 0],
+					      std::max(source[(i * 4) + 1], source[(i * 4) + 2]));
+		pixels[(i * 4) + 0] = (uint8_t)(((uint16_t)blue * mask) / 255);
+		pixels[(i * 4) + 1] = (uint8_t)(((uint16_t)green * mask) / 255);
+		pixels[(i * 4) + 2] = (uint8_t)(((uint16_t)red * mask) / 255);
+		pixels[(i * 4) + 3] = (uint8_t)(((uint16_t)alpha * mask) / 255);
+	}
+
+	SelectObject(memory_dc, old_bitmap);
+	DeleteObject(bitmap);
+	DeleteDC(memory_dc);
+
+	const uint8_t *texture_data = pixels.data();
+	display->text_texture = gs_texture_create(display->width, display->height, GS_BGRA, 1, &texture_data, 0);
+	display->cached_font_valid = display->text_texture != nullptr;
+	display->cached_text = text;
+	display->cached_color = color;
+	display->cached_width = display->width;
+	display->cached_height = display->height;
+	display->cached_font_face = display->font_face;
+	display->cached_font_size = display->font_size;
+	display->cached_font_flags = display->font_flags;
 #else
 	UNUSED_PARAMETER(display);
 	UNUSED_PARAMETER(text);
@@ -543,6 +698,11 @@ void bpm_display_render(void *data, gs_effect_t *)
 		if (display->glow_enabled)
 			draw_system_font_glow(display, text, color);
 		draw_system_font(display, text, color);
+		if (!display->text_texture) {
+			if (display->glow_enabled)
+				draw_segment_glow(display, text, color);
+			draw_segment_text(display, text, color);
+		}
 	} else {
 		if (display->glow_enabled)
 			draw_segment_glow(display, text, color);
