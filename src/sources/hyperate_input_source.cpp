@@ -4,7 +4,6 @@
 #include "hyperate/hyperate_client.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cstring>
 #include <memory>
 #include <sstream>
@@ -17,7 +16,6 @@ struct HyperateInputSource {
 	std::unique_ptr<hyperate::HyperateClient> client;
 	std::string status_note = "Disconnected";
 	std::string last_published_status;
-	std::chrono::steady_clock::time_point last_refresh = std::chrono::steady_clock::now();
 	bool checked_legacy_source_name = false;
 };
 
@@ -72,30 +70,6 @@ bool is_connected_or_connecting(const HyperateInputSource *input)
 	return status == hyperate::ConnectionStatus::Connecting || status == hyperate::ConnectionStatus::Connected;
 }
 
-void request_properties_refresh(HyperateInputSource *input, bool immediate)
-{
-	if (!input || !input->source)
-		return;
-
-	const auto now = std::chrono::steady_clock::now();
-	if (!immediate && now - input->last_refresh < std::chrono::milliseconds(500))
-		return;
-
-	input->last_refresh = now;
-	obs_source_t *source = obs_source_get_ref(input->source);
-	if (!source)
-		return;
-
-	obs_queue_task(
-		OBS_TASK_UI,
-		[](void *param) {
-			auto *queued_source = static_cast<obs_source_t *>(param);
-			obs_source_update_properties(queued_source);
-			obs_source_release(queued_source);
-		},
-		source, false);
-}
-
 void hyperate_input_update(void *data, obs_data_t *settings)
 {
 	(void)settings;
@@ -137,8 +111,6 @@ void publish_status(HyperateInputSource *input, const std::string &status)
 	obs_data_t *settings = obs_source_get_settings(input->source);
 	obs_data_set_string(settings, "status", status.c_str());
 	obs_data_release(settings);
-
-	request_properties_refresh(input, false);
 }
 
 bool connection_toggle_clicked(obs_properties_t *, obs_property_t *, void *data)
