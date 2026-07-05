@@ -126,6 +126,8 @@ You still need CMake plus OBS/libobs development dependencies available locally.
 
 If CMake says it cannot find `libobs`, read `docs/macos-libobs.md`. Installing the OBS app alone normally does not expose the native plugin development files.
 
+For end-user ZIP packages and GitHub Releases, read `docs/release-and-installation.md`.
+
 For a local macOS development setup, the shortest path is:
 
 ```sh

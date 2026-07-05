@@ -21,9 +21,13 @@ struct HyperateInputSource {
 	bool checked_legacy_source_name = false;
 };
 
-// Development-only token for the private test build. Replace this with secure
-// local configuration before distributing the plugin.
-const char *kDevelopmentApiToken = "a7f9d18c4e2b91f0c8d6e5a13b7f9c42e1d8a5f6b3c7d9e0f4a1c8b2d6e9f735";
+#ifndef HYPERATE_API_TOKEN
+#define HYPERATE_API_TOKEN "a7f9d18c4e2b91f0c8d6e5a13b7f9c42e1d8a5f6b3c7d9e0f4a1c8b2d6e9f735"
+#endif
+
+// Private-build token compiled into the plugin so streamers do not need to enter one.
+// For public releases, pass -DHYPERATE_API_TOKEN=... from CI instead of adding an OBS UI field.
+const char *kBundledApiToken = HYPERATE_API_TOKEN;
 
 const char *hyperate_input_get_name(void *)
 {
@@ -114,7 +118,7 @@ hyperate::HyperateClientConfig config_from_settings(obs_data_t *settings)
 
 	hyperate::HyperateClientConfig config;
 	config.channel_id = channel ? channel : "";
-	config.api_key = kDevelopmentApiToken;
+	config.api_key = kBundledApiToken;
 	config.host = "app.hyperate.io";
 	config.path = "/ws";
 	config.port = 443;

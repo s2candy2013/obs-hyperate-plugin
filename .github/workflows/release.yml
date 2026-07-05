@@ -1,0 +1,241 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  OBS_VERSION: "31.1.1"
+  OBS_DEPS_VERSION: "2025-07-11"
+  PLUGIN_NAME: "obs-hyperate"
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: zsh --no-rcs --errexit --pipefail {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: brew install cmake ninja pkg-config libwebsockets
+
+      - name: Build local libobs development files
+        run: |
+          bash scripts/setup-obs-dev-macos.sh
+          bash scripts/build-local-libobs-macos.sh
+
+      - name: Configure plugin
+        env:
+          HYPERATE_API_TOKEN_SECRET: ${{ secrets.HYPERATE_API_TOKEN }}
+        run: |
+          libobs_config="$(find .deps/obs-install .deps/obs-build \( -name libobsConfig.cmake -o -name libobs-config.cmake \) | head -n 1)"
+          libobs_dir="$(dirname "${libobs_config}")"
+
+          token_arg=()
+          if [[ -n "${HYPERATE_API_TOKEN_SECRET}" ]]; then
+            token_arg=(-DHYPERATE_API_TOKEN="${HYPERATE_API_TOKEN_SECRET}")
+          fi
+
+          cmake --preset macos-ninja -Dlibobs_DIR="${libobs_dir}" "${token_arg[@]}"
+
+      - name: Build plugin
+        run: cmake --build --preset macos-ninja
+
+      - name: Package plugin
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "${version}" == "${GITHUB_REF_NAME}" ]]; then
+            version="$(jq -r '.version' buildspec.json)"
+          fi
+
+          rm -rf package release
+          mkdir -p package release
+          ditto build_macos_ninja/obs-hyperate.plugin package/obs-hyperate.plugin
+          ditto -c -k --keepParent package/obs-hyperate.plugin "release/obs-hyperate-${version}-macos.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: obs-hyperate-macos
+          path: release/*.zip
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: release/*.zip
+
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config build-essential zip libobs-dev libwebsockets-dev
+
+      - name: Configure plugin
+        env:
+          HYPERATE_API_TOKEN_SECRET: ${{ secrets.HYPERATE_API_TOKEN }}
+        run: |
+          token_arg=()
+          if [[ -n "${HYPERATE_API_TOKEN_SECRET}" ]]; then
+            token_arg=(-DHYPERATE_API_TOKEN="${HYPERATE_API_TOKEN_SECRET}")
+          fi
+
+          cmake --preset ubuntu-x86_64 "${token_arg[@]}"
+
+      - name: Build plugin
+        run: cmake --build --preset ubuntu-x86_64
+
+      - name: Package plugin
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "${version}" == "${GITHUB_REF_NAME}" ]]; then
+            version="$(jq -r '.version' buildspec.json)"
+          fi
+
+          rm -rf package release
+          mkdir -p package/obs-hyperate/bin/64bit package/obs-hyperate/data release
+          cp build_x86_64/obs-hyperate.so package/obs-hyperate/bin/64bit/
+          cp -R data/. package/obs-hyperate/data/
+          (cd package && zip -r "../release/obs-hyperate-${version}-linux-x86_64.zip" obs-hyperate)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: obs-hyperate-linux-x86_64
+          path: release/*.zip
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: release/*.zip
+
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          vcpkg install libwebsockets:x64-windows
+
+      - name: Prepare OBS development files
+        run: |
+          $depsRoot = Join-Path $PWD ".deps"
+          $downloads = Join-Path $depsRoot "downloads"
+          $obsSource = Join-Path $depsRoot "obs-studio-${env:OBS_VERSION}"
+          $obsDeps = Join-Path $depsRoot "obs-deps-${env:OBS_DEPS_VERSION}-x64"
+          $obsBuild = Join-Path $depsRoot "obs-build"
+          $obsInstall = Join-Path $depsRoot "obs-install"
+          New-Item -ItemType Directory -Force -Path $downloads | Out-Null
+
+          $obsZip = Join-Path $downloads "obs-studio-${env:OBS_VERSION}.zip"
+          $obsDepsZip = Join-Path $downloads "windows-deps-${env:OBS_DEPS_VERSION}-x64.zip"
+          Invoke-WebRequest "https://github.com/obsproject/obs-studio/archive/refs/tags/${env:OBS_VERSION}.zip" -OutFile $obsZip
+          Invoke-WebRequest "https://github.com/obsproject/obs-deps/releases/download/${env:OBS_DEPS_VERSION}/windows-deps-${env:OBS_DEPS_VERSION}-x64.zip" -OutFile $obsDepsZip
+
+          Expand-Archive $obsZip -DestinationPath $depsRoot -Force
+          if (Test-Path $obsSource) { Remove-Item $obsSource -Recurse -Force }
+          Move-Item (Join-Path $depsRoot "obs-studio-${env:OBS_VERSION}") $obsSource
+
+          New-Item -ItemType Directory -Force -Path $obsDeps | Out-Null
+          Expand-Archive $obsDepsZip -DestinationPath $obsDeps -Force
+
+          cmake `
+            -S $obsSource `
+            -B $obsBuild `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_CONFIGURATION_TYPES=RelWithDebInfo `
+            -DCMAKE_PREFIX_PATH="$obsDeps" `
+            -DCMAKE_INSTALL_PREFIX="$obsInstall" `
+            -DENABLE_UI=OFF `
+            -DENABLE_FRONTEND=OFF `
+            -DENABLE_PLUGINS=OFF `
+            -DENABLE_BROWSER=OFF `
+            -DENABLE_SCRIPTING=OFF `
+            -DENABLE_AJA=OFF `
+            -DENABLE_DECKLINK=OFF `
+            -DENABLE_WEBRTC=OFF `
+            -DENABLE_VLC=OFF
+
+          cmake --build $obsBuild --target libobs --config RelWithDebInfo
+
+      - name: Configure plugin
+        env:
+          HYPERATE_API_TOKEN_SECRET: ${{ secrets.HYPERATE_API_TOKEN }}
+        run: |
+          $libobsConfig = Get-ChildItem ".deps/obs-build", ".deps/obs-install" -Recurse -Include "libobsConfig.cmake", "libobs-config.cmake" | Select-Object -First 1
+          if ($null -eq $libobsConfig) {
+            throw "Could not find libobsConfig.cmake"
+          }
+
+          $args = @(
+            "--preset", "windows-x64",
+            "-Dlibobs_DIR=$($libobsConfig.Directory.FullName)",
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake",
+            "-DVCPKG_TARGET_TRIPLET=x64-windows"
+          )
+
+          if ($env:HYPERATE_API_TOKEN_SECRET) {
+            $args += "-DHYPERATE_API_TOKEN=$env:HYPERATE_API_TOKEN_SECRET"
+          }
+
+          cmake @args
+
+      - name: Build plugin
+        run: cmake --build --preset windows-x64
+
+      - name: Package plugin
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace "^v", ""
+          if ($version -eq $env:GITHUB_REF_NAME) {
+            $version = (Get-Content buildspec.json -Raw | ConvertFrom-Json).version
+          }
+
+          $packageRoot = Join-Path $PWD "package/obs-hyperate"
+          $binDir = Join-Path $packageRoot "bin/64bit"
+          $dataDir = Join-Path $packageRoot "data"
+          $releaseDir = Join-Path $PWD "release"
+          New-Item -ItemType Directory -Force -Path $binDir, $dataDir, $releaseDir | Out-Null
+
+          Copy-Item "build_x64/RelWithDebInfo/obs-hyperate.dll" $binDir
+          Copy-Item "data/*" $dataDir -Recurse
+          Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin/*.dll" $binDir -ErrorAction SilentlyContinue
+
+          Compress-Archive -Path $packageRoot -DestinationPath (Join-Path $releaseDir "obs-hyperate-${version}-windows-x64.zip") -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: obs-hyperate-windows-x64
+          path: release/*.zip
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: release/*.zip

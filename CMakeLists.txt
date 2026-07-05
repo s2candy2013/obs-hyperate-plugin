@@ -5,6 +5,12 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/common/bootstrap.cmake" NO_POLICY_SCO
 project(${_name} VERSION ${_version} LANGUAGES C CXX)
 
 option(HYPERATE_WITH_LIBWEBSOCKETS "Enable the HypeRate WebSocket client through libwebsockets" ON)
+set(
+  HYPERATE_API_TOKEN
+  "a7f9d18c4e2b91f0c8d6e5a13b7f9c42e1d8a5f6b3c7d9e0f4a1c8b2d6e9f735"
+  CACHE STRING
+  "HypeRate API token compiled into private builds so users do not need to enter one"
+)
 
 include(compilerconfig)
 include(defaults)
@@ -26,6 +32,7 @@ if(NOT libobs_FOUND)
 endif()
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_DL_LIBS})
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HYPERATE_API_TOKEN="${HYPERATE_API_TOKEN}")
 
 target_sources(
   ${CMAKE_PROJECT_NAME}
