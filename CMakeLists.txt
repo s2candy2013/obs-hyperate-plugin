@@ -33,6 +33,9 @@ endif()
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_DL_LIBS})
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HYPERATE_API_TOKEN="${HYPERATE_API_TOKEN}")
+if(WIN32)
+  target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
 
 target_sources(
   ${CMAKE_PROJECT_NAME}
