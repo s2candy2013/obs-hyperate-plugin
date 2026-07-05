@@ -159,8 +159,16 @@ jobs:
           Invoke-WebRequest "https://github.com/obsproject/obs-deps/releases/download/${env:OBS_DEPS_VERSION}/windows-deps-${env:OBS_DEPS_VERSION}-x64.zip" -OutFile $obsDepsZip
 
           Expand-Archive $obsZip -DestinationPath $depsRoot -Force
-          if (Test-Path $obsSource) { Remove-Item $obsSource -Recurse -Force }
-          Move-Item (Join-Path $depsRoot "obs-studio-${env:OBS_VERSION}") $obsSource
+          $expandedObsSource = Get-ChildItem $depsRoot -Directory | Where-Object { $_.Name -like "obs-studio-*" } | Select-Object -First 1
+          if ($null -eq $expandedObsSource) {
+            throw "Could not find extracted OBS Studio source directory"
+          }
+          if ((Test-Path $obsSource) -and ($expandedObsSource.FullName -ne $obsSource)) {
+            Remove-Item $obsSource -Recurse -Force
+          }
+          if ($expandedObsSource.FullName -ne $obsSource) {
+            Move-Item $expandedObsSource.FullName $obsSource
+          }
 
           New-Item -ItemType Directory -Force -Path $obsDeps | Out-Null
           Expand-Archive $obsDepsZip -DestinationPath $obsDeps -Force
