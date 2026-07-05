@@ -513,8 +513,8 @@ void ensure_system_font_texture(BpmDisplaySource *display, const std::string &te
 
 	RECT measured{};
 	measure_text(font, &measured);
-	const int measured_width = std::max(1, measured.right - measured.left);
-	const int measured_height = std::max(1, measured.bottom - measured.top);
+	const int measured_width = std::max(1, (int)(measured.right - measured.left));
+	const int measured_height = std::max(1, (int)(measured.bottom - measured.top));
 	if (measured_width > max_text_width || measured_height > max_text_height) {
 		const double width_scale = (double)max_text_width / (double)measured_width;
 		const double height_scale = (double)max_text_height / (double)measured_height;
