@@ -66,17 +66,28 @@ jobs:
           ditto build_macos_ninja/obs-hyperate.plugin package/obs-hyperate.plugin
           ditto -c -k --keepParent package/obs-hyperate.plugin "release/obs-hyperate-${version}-macos.zip"
 
+          pkgroot="pkgroot"
+          rm -rf "${pkgroot}"
+          mkdir -p "${pkgroot}/Library/Application Support/obs-studio/plugins"
+          ditto build_macos_ninja/obs-hyperate.plugin "${pkgroot}/Library/Application Support/obs-studio/plugins/obs-hyperate.plugin"
+          pkgbuild \
+            --root "${pkgroot}" \
+            --identifier "io.hyperate.obs.plugin" \
+            --version "${version}" \
+            --install-location "/" \
+            "release/obs-hyperate-${version}-macos.pkg"
+
       - uses: actions/upload-artifact@v4
         with:
           name: obs-hyperate-macos
-          path: release/*.zip
+          path: release/*
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: release/*.zip
+          files: release/*
 
   linux:
     name: Linux x86_64
@@ -120,17 +131,40 @@ jobs:
           cp -R data/. package/obs-hyperate/data/
           (cd package && zip -r "../release/obs-hyperate-${version}-linux-x86_64.zip" obs-hyperate)
 
+          payload="release/obs-hyperate-${version}-linux-x86_64.payload.tar.gz"
+          tar -czf "${payload}" -C package obs-hyperate
+
+          installer="release/obs-hyperate-${version}-linux-x86_64-installer.run"
+          cat > "${installer}" <<'INSTALLER'
+          #!/bin/sh
+          set -eu
+
+          install_dir="${XDG_CONFIG_HOME:-$HOME/.config}/obs-studio/plugins"
+          archive_line="$(awk '/^__OBS_HYPERATE_ARCHIVE_BELOW__/ {print NR + 1; exit}' "$0")"
+
+          mkdir -p "${install_dir}"
+          tail -n +"${archive_line}" "$0" | tar -xz -C "${install_dir}"
+
+          echo "OBS HypeRate was installed to: ${install_dir}/obs-hyperate"
+          echo "Restart OBS Studio to load the plugin."
+          exit 0
+          __OBS_HYPERATE_ARCHIVE_BELOW__
+          INSTALLER
+          cat "${payload}" >> "${installer}"
+          chmod +x "${installer}"
+          rm "${payload}"
+
       - uses: actions/upload-artifact@v4
         with:
           name: obs-hyperate-linux-x86_64
-          path: release/*.zip
+          path: release/*
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: release/*.zip
+          files: release/*
 
   windows:
     name: Windows x64
@@ -145,6 +179,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install installer dependencies
+        run: choco install nsis -y --no-progress
 
       - name: Cache vcpkg packages
         uses: actions/cache@v4
@@ -284,14 +321,58 @@ jobs:
 
           Compress-Archive -Path $packageRoot -DestinationPath (Join-Path $releaseDir "obs-hyperate-${version}-windows-x64.zip") -Force
 
+          $installerScript = Join-Path $PWD "obs-hyperate-installer.nsi"
+          @'
+          !include "MUI2.nsh"
+
+          Name "OBS HypeRate"
+          OutFile "release\obs-hyperate-${VERSION}-windows-x64-installer.exe"
+          InstallDir "$APPDATA\obs-studio\plugins\obs-hyperate"
+          RequestExecutionLevel user
+          ShowInstDetails show
+          ShowUninstDetails show
+
+          !insertmacro MUI_PAGE_WELCOME
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_PAGE_FINISH
+          !insertmacro MUI_UNPAGE_CONFIRM
+          !insertmacro MUI_UNPAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
+
+          Section "Install"
+            RMDir /r "$INSTDIR"
+            CreateDirectory "$INSTDIR"
+            SetOutPath "$INSTDIR"
+            File /r "package\obs-hyperate\*.*"
+            WriteUninstaller "$INSTDIR\Uninstall.exe"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate" "DisplayName" "OBS HypeRate"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate" "UninstallString" "$INSTDIR\Uninstall.exe"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate" "DisplayVersion" "${VERSION}"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate" "Publisher" "HypeRate"
+          SectionEnd
+
+          Section "Uninstall"
+            DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\OBS HypeRate"
+            SetOutPath "$TEMP"
+            RMDir /r "$INSTDIR"
+          SectionEnd
+          '@ | Set-Content -Path $installerScript -Encoding ASCII
+
+          $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (!(Test-Path $makensis)) {
+            $makensis = "makensis"
+          }
+          & $makensis "/DVERSION=$version" $installerScript
+
       - uses: actions/upload-artifact@v4
         with:
           name: obs-hyperate-windows-x64
-          path: release/*.zip
+          path: release/*
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: release/*.zip
+          files: release/*

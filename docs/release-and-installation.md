@@ -1,6 +1,6 @@
 # Release and Installation
 
-This project ships native OBS plugin builds as ZIP files attached to GitHub Actions runs and draft GitHub Releases.
+This project ships native OBS plugin builds as ZIP files and first-pass installers attached to GitHub Actions runs and draft GitHub Releases.
 
 ## Creating a Release
 
@@ -14,7 +14,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-For tag builds, the workflow creates a draft GitHub Release and attaches platform ZIP files.
+For tag builds, the workflow creates a draft GitHub Release and attaches platform ZIP files plus installers.
 
 ## HypeRate API Token
 
@@ -56,6 +56,18 @@ to:
 
 Then restart OBS.
 
+Installer alternative:
+
+```text
+obs-hyperate-<version>-macos.pkg
+```
+
+This installs the plugin system-wide to:
+
+```text
+/Library/Application Support/obs-studio/plugins/
+```
+
 ### Windows
 
 Download:
@@ -84,6 +96,18 @@ The final layout should look like:
 ```
 
 Then restart OBS.
+
+Installer alternative:
+
+```text
+obs-hyperate-<version>-windows-x64-installer.exe
+```
+
+This installs the plugin for the current Windows user to:
+
+```text
+%APPDATA%\obs-studio\plugins\obs-hyperate
+```
 
 ### Linux
 
@@ -114,10 +138,26 @@ The final layout should look like:
 
 Then restart OBS.
 
+Installer alternative:
+
+```text
+chmod +x obs-hyperate-<version>-linux-x86_64-installer.run
+./obs-hyperate-<version>-linux-x86_64-installer.run
+```
+
+This installs the plugin for the current Linux user to:
+
+```text
+~/.config/obs-studio/plugins/obs-hyperate
+```
+
 ## Current Packaging Notes
 
 - macOS builds are not signed or notarized yet.
+- macOS PKG installers are unsigned and install system-wide.
 - Windows builds are not code-signed yet.
+- Windows EXE installers are unsigned and install per-user.
 - Windows packages bundle only the plugin's WebSocket runtime DLLs. OBS/FFmpeg runtime DLLs are expected to come from the user's OBS installation.
+- Linux `.run` installers are self-extracting shell installers and install per-user.
 - Linux builds target Ubuntu 24.04 x86_64 first.
 - The workflow is a first release pipeline and may need one or two CI iterations to match OBS runner dependency details exactly.
