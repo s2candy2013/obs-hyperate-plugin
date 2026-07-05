@@ -136,12 +136,26 @@ jobs:
     name: Windows x64
     runs-on: windows-2022
     timeout-minutes: 25
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+      VCPKG_BINARY_SOURCES: "clear;default,readwrite"
     defaults:
       run:
         shell: pwsh
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
+          key: windows-vcpkg-libwebsockets-v1
+
+      - name: Install libwebsockets
+        run: |
+          vcpkg install libwebsockets:x64-windows --clean-after-build
+          "VCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
 
       - name: Prepare OBS development files
         run: |
@@ -205,6 +219,7 @@ jobs:
 
           $prefixPaths = @(
             $env:OBS_DEPS_DIR,
+            $env:VCPKG_INSTALLED_DIR,
             (Resolve-Path ".deps/obs-build").Path,
             (Resolve-Path ".deps/obs-build/deps/w32-pthreads").Path
           )
@@ -245,6 +260,7 @@ jobs:
           Copy-Item "build_x64/RelWithDebInfo/obs-hyperate.dll" $binDir
           Copy-Item "data/*" $dataDir -Recurse
           Copy-Item "$env:OBS_DEPS_DIR/bin/*.dll" $binDir -ErrorAction SilentlyContinue
+          Copy-Item "$env:VCPKG_INSTALLED_DIR/bin/*.dll" $binDir -ErrorAction SilentlyContinue
 
           Compress-Archive -Path $packageRoot -DestinationPath (Join-Path $releaseDir "obs-hyperate-${version}-windows-x64.zip") -Force
 
