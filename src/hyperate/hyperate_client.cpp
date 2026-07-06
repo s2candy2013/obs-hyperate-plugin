@@ -141,8 +141,7 @@ int hyperate_lws_callback(struct lws *wsi, enum lws_callback_reasons reason, voi
 		client->on_lws_receive(static_cast<const char *>(in), len);
 		break;
 	case LWS_CALLBACK_CLIENT_WRITEABLE:
-		client->on_lws_writable();
-		break;
+		return client->on_lws_writable();
 	case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
 		client->on_lws_connection_error();
 		break;
@@ -159,39 +158,57 @@ int hyperate_lws_callback(struct lws *wsi, enum lws_callback_reasons reason, voi
 
 } // namespace
 
-HyperateClient::HyperateClient() = default;
+HyperateClient::HyperateClient()
+{
+	thread_ = std::thread(&HyperateClient::run, this);
+}
 
 HyperateClient::~HyperateClient()
 {
-	stop();
+	shutdown_ = true;
+	wake_service_thread();
+
+	if (thread_.joinable())
+		thread_.join();
 }
 
 void HyperateClient::start(HyperateClientConfig config)
 {
-	stop();
-	config_ = std::move(config);
-	heart_rate_state().set_smoothing_alpha(config_.smoothing_alpha);
-	stop_requested_ = false;
+	const std::string channel_id = config.channel_id;
+
+	{
+		std::lock_guard<std::mutex> lock(command_mutex_);
+		pending_config_ = std::move(config);
+		connect_pending_ = true;
+		disconnect_pending_ = false;
+	}
+
 	heart_rate_state().set_live(false);
 	set_status(ConnectionStatus::Connecting, "Connecting");
-	HYPERATE_LOG(LOG_INFO, "Connect requested for HypeRate ID '%s'", config_.channel_id.c_str());
-	thread_ = std::thread(&HyperateClient::run, this);
+	HYPERATE_LOG(LOG_INFO, "Connect requested for HypeRate ID '%s'", channel_id.c_str());
+	wake_service_thread();
 }
 
 void HyperateClient::stop()
 {
-	stop_requested_ = true;
-
-#ifdef HYPERATE_HAVE_LIBWEBSOCKETS
-	if (lws_context_)
-		lws_cancel_service(lws_context_);
-#endif
-
-	if (thread_.joinable())
-		thread_.join();
+	{
+		std::lock_guard<std::mutex> lock(command_mutex_);
+		disconnect_pending_ = true;
+		connect_pending_ = false;
+	}
 
 	heart_rate_state().set_live(false);
 	set_status(ConnectionStatus::Disconnected, "Disconnected");
+	wake_service_thread();
+}
+
+void HyperateClient::wake_service_thread()
+{
+#ifdef HYPERATE_HAVE_LIBWEBSOCKETS
+	std::lock_guard<std::mutex> lock(command_mutex_);
+	if (lws_context_)
+		lws_cancel_service(lws_context_);
+#endif
 }
 
 ConnectionStatus HyperateClient::status() const
@@ -233,10 +250,9 @@ void HyperateClient::handle_text_message(const std::string &message)
 void HyperateClient::run()
 {
 #ifndef HYPERATE_HAVE_LIBWEBSOCKETS
-	(void)config_;
 	set_status(ConnectionStatus::Error, "Built without libwebsockets");
 	HYPERATE_LOG(LOG_WARNING, "libwebsockets is unavailable; HypeRate connection is disabled");
-	while (!stop_requested_)
+	while (!shutdown_)
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 #else
 	lws_set_log_level(LLL_ERR | LLL_WARN | LLL_NOTICE, hyperate_lws_log);
@@ -251,27 +267,95 @@ void HyperateClient::run()
 	lws_context_creation_info info{};
 	info.port = CONTEXT_PORT_NO_LISTEN;
 	info.protocols = protocols;
-	// Do NOT set LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT here. OBS and other bundled
-	// plugins (e.g. obs-websocket) already use OpenSSL in this same process. With
-	// that flag, libwebsockets runs the matching OpenSSL global *de-init* when the
-	// context is destroyed on Disconnect, tearing shared OpenSSL state out from
-	// under OBS. The first connect then works, but every later connect fails in
-	// lws_context_init_client_ssl ("Could not create WebSocket context"). OpenSSL
-	// 3 auto-initialises on first use, so leaving this unset keeps TLS working
-	// while making connect/disconnect cycles repeatable.
-	info.options = 0;
+	// Initialise the OpenSSL library once for this long-lived context. Because the
+	// context is only destroyed when the client is destroyed, the matching global
+	// de-init runs at most once per plugin instance instead of on every disconnect.
+	info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 	info.uid = -1;
 	info.gid = -1;
 
-	lws_context_ = lws_create_context(&info);
-	if (!lws_context_) {
+	lws_context *context = lws_create_context(&info);
+	if (!context) {
 		set_status(ConnectionStatus::Error, "Could not create WebSocket context");
+		HYPERATE_LOG(LOG_ERROR, "Could not create libwebsockets context");
 		return;
 	}
+
+	{
+		std::lock_guard<std::mutex> lock(command_mutex_);
+		lws_context_ = context;
+	}
+
+	while (!shutdown_) {
+		bool do_connect = false;
+		bool do_disconnect = false;
+		HyperateClientConfig next_config;
+		{
+			std::lock_guard<std::mutex> lock(command_mutex_);
+			if (disconnect_pending_) {
+				do_disconnect = true;
+				disconnect_pending_ = false;
+			}
+			if (connect_pending_) {
+				do_connect = true;
+				next_config = pending_config_;
+				connect_pending_ = false;
+			}
+		}
+
+		if (do_disconnect)
+			request_close();
+
+		if (do_connect) {
+			config_ = std::move(next_config);
+			heart_rate_state().set_smoothing_alpha(config_.smoothing_alpha);
+			heart_rate_state().set_live(false);
+			open_connection();
+		}
+
+		lws_service(context, 100);
+
+		const auto now = std::chrono::steady_clock::now();
+		if (wsi_ && !handshake_timed_out_ && status() == ConnectionStatus::Connecting &&
+		    now >= handshake_deadline_) {
+			handshake_timed_out_ = true;
+			HYPERATE_LOG(LOG_ERROR, "WebSocket handshake timed out");
+			set_status(ConnectionStatus::Error, "WebSocket handshake timed out");
+		}
+
+		if (wsi_ && status() == ConnectionStatus::Connected && now >= next_heartbeat_) {
+			send_heartbeat_frame();
+			next_heartbeat_ = now + std::chrono::seconds(15);
+		}
+	}
+
+	// Tear down once at the very end. Destroying the context also closes any open
+	// client connection, so there is no separate wsi to free here.
+	{
+		std::lock_guard<std::mutex> lock(command_mutex_);
+		lws_context_ = nullptr;
+	}
+	lws_context_destroy(context);
+	wsi_ = nullptr;
+	pending_messages_.clear();
+#endif
+}
+
+#ifdef HYPERATE_HAVE_LIBWEBSOCKETS
+void HyperateClient::open_connection()
+{
+	if (wsi_ || config_.channel_id.empty())
+		return;
 
 	const std::string connect_path = build_connect_path(config_.path, config_.channel_id, config_.api_key);
 	HYPERATE_LOG(LOG_INFO, "Opening WebSocket to wss://%s%s", config_.host.c_str(),
 		     redact_token(connect_path).c_str());
+
+	pending_messages_.clear();
+	closing_ = false;
+	handshake_timed_out_ = false;
+	handshake_deadline_ = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+	next_heartbeat_ = std::chrono::steady_clock::now() + std::chrono::seconds(15);
 
 	lws_client_connect_info connect_info{};
 	connect_info.context = lws_context_;
@@ -281,97 +365,74 @@ void HyperateClient::run()
 	connect_info.host = config_.host.c_str();
 	connect_info.origin = "https://app.hyperate.io";
 	connect_info.protocol = nullptr;
-	connect_info.local_protocol_name = protocols[0].name;
+	connect_info.local_protocol_name = "obs-hyperate";
 	connect_info.alpn = "http/1.1";
 	connect_info.ietf_version_or_minus_one = -1;
 	connect_info.opaque_user_data = this;
 	connect_info.pwsi = &wsi_;
 	connect_info.ssl_connection = config_.use_tls ? LCCSCF_USE_SSL : 0;
 
+	set_status(ConnectionStatus::Connecting, "Connecting");
 	wsi_ = lws_client_connect_via_info(&connect_info);
 	if (!wsi_) {
 		set_status(ConnectionStatus::Error, "Could not start WebSocket connection");
-		lws_context_destroy(lws_context_);
-		lws_context_ = nullptr;
+		HYPERATE_LOG(LOG_ERROR, "Could not start WebSocket connection");
+	}
+}
+
+void HyperateClient::request_close()
+{
+	if (!wsi_) {
+		heart_rate_state().set_live(false);
+		set_status(ConnectionStatus::Disconnected, "Disconnected");
 		return;
 	}
 
-	auto next_heartbeat = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-	auto handshake_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-	bool handshake_timed_out = false;
-	while (!stop_requested_)
-	{
-		lws_service(lws_context_, 100);
-
-		const auto now = std::chrono::steady_clock::now();
-		if (!handshake_timed_out && status() == ConnectionStatus::Connecting && now >= handshake_deadline) {
-			handshake_timed_out = true;
-			HYPERATE_LOG(LOG_ERROR, "WebSocket handshake timed out");
-			set_status(ConnectionStatus::Error, "WebSocket handshake timed out");
-		}
-
-		if (wsi_ && status() == ConnectionStatus::Connected && now >= next_heartbeat) {
-			send_heartbeat_frame();
-			next_heartbeat = now + std::chrono::seconds(15);
-		}
-	}
-
+	// Send a best-effort leave frame, then ask the writable callback to close the
+	// connection cleanly by returning -1.
+	closing_ = true;
 	send_leave_frame();
-
-	lws_context_destroy(lws_context_);
-	lws_context_ = nullptr;
-	wsi_ = nullptr;
-	pending_messages_.clear();
-#endif
+	lws_callback_on_writable(wsi_);
 }
 
 void HyperateClient::send_join_frame()
 {
-#ifdef HYPERATE_HAVE_LIBWEBSOCKETS
 	if (!wsi_ || config_.channel_id.empty())
 		return;
 
 	const std::string payload = "{\"topic\":\"" + hr_topic(config_.channel_id) +
 				    "\",\"event\":\"phx_join\",\"payload\":{},\"ref\":\"1\"}";
 	send_text_frame(payload);
-#endif
 }
 
 void HyperateClient::send_leave_frame()
 {
-#ifdef HYPERATE_HAVE_LIBWEBSOCKETS
 	if (!wsi_ || config_.channel_id.empty())
 		return;
 
 	const std::string payload = "{\"topic\":\"" + hr_topic(config_.channel_id) +
 				    "\",\"event\":\"phx_leave\",\"payload\":{},\"ref\":0}";
 	send_text_frame(payload);
-#endif
 }
 
 void HyperateClient::send_heartbeat_frame()
 {
-#ifdef HYPERATE_HAVE_LIBWEBSOCKETS
 	if (!wsi_)
 		return;
 
 	send_text_frame("{\"event\":\"ping\",\"payload\":{\"timestamp\":" + std::to_string(unix_time_millis()) +
 			"}}");
-#endif
 }
 
 void HyperateClient::send_text_frame(const std::string &payload)
 {
-#ifdef HYPERATE_HAVE_LIBWEBSOCKETS
 	if (!wsi_)
 		return;
 
 	pending_messages_.push_back(payload);
 	lws_callback_on_writable(wsi_);
-#endif
 }
 
-#ifdef HYPERATE_HAVE_LIBWEBSOCKETS
 void HyperateClient::on_lws_established(::lws *wsi)
 {
 	wsi_ = wsi;
@@ -386,32 +447,39 @@ void HyperateClient::on_lws_receive(const char *message, size_t len)
 	handle_text_message(std::string(message, len));
 }
 
-void HyperateClient::on_lws_writable()
+int HyperateClient::on_lws_writable()
 {
-	if (!wsi_ || pending_messages_.empty())
-		return;
+	if (!pending_messages_.empty()) {
+		std::string payload = std::move(pending_messages_.front());
+		pending_messages_.pop_front();
 
-	std::string payload = std::move(pending_messages_.front());
-	pending_messages_.pop_front();
+		const size_t length = payload.size();
+		std::vector<unsigned char> buffer(LWS_PRE + length);
+		std::memcpy(&buffer[LWS_PRE], payload.data(), length);
 
-	const size_t length = payload.size();
-	std::vector<unsigned char> buffer(LWS_PRE + length);
-	std::memcpy(&buffer[LWS_PRE], payload.data(), length);
-
-	const int written = lws_write(wsi_, &buffer[LWS_PRE], length, LWS_WRITE_TEXT);
-	if (written < static_cast<int>(length)) {
-		HYPERATE_LOG(LOG_ERROR, "WebSocket write failed");
-		set_status(ConnectionStatus::Error, "WebSocket write failed");
-		return;
+		const int written = lws_write(wsi_, &buffer[LWS_PRE], length, LWS_WRITE_TEXT);
+		if (written < static_cast<int>(length)) {
+			HYPERATE_LOG(LOG_ERROR, "WebSocket write failed");
+			set_status(ConnectionStatus::Error, "WebSocket write failed");
+			return -1;
+		}
 	}
 
-	if (!pending_messages_.empty())
+	if (!pending_messages_.empty()) {
 		lws_callback_on_writable(wsi_);
+		return 0;
+	}
+
+	// All queued frames flushed; close the connection if a disconnect was requested.
+	return closing_ ? -1 : 0;
 }
 
 void HyperateClient::on_lws_connection_error()
 {
 	HYPERATE_LOG(LOG_ERROR, "WebSocket connection failed");
+	wsi_ = nullptr;
+	closing_ = false;
+	pending_messages_.clear();
 	heart_rate_state().set_live(false);
 	set_status(ConnectionStatus::Error, "WebSocket connection failed");
 }
@@ -419,6 +487,9 @@ void HyperateClient::on_lws_connection_error()
 void HyperateClient::on_lws_closed()
 {
 	HYPERATE_LOG(LOG_INFO, "WebSocket closed");
+	wsi_ = nullptr;
+	closing_ = false;
+	pending_messages_.clear();
 	heart_rate_state().set_live(false);
 	set_status(ConnectionStatus::Disconnected, "Disconnected");
 }

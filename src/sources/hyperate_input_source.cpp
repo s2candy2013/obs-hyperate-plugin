@@ -23,6 +23,10 @@ struct HyperateInputSource {
 #define HYPERATE_API_TOKEN "a7f9d18c4e2b91f0c8d6e5a13b7f9c42e1d8a5f6b3c7d9e0f4a1c8b2d6e9f735"
 #endif
 
+#ifndef HYPERATE_PLUGIN_VERSION
+#define HYPERATE_PLUGIN_VERSION "dev"
+#endif
+
 // Private-build token compiled into the plugin so streamers do not need to enter one.
 // For public releases, pass -DHYPERATE_API_TOKEN=... from CI instead of adding an OBS UI field.
 const char *kBundledApiToken = HYPERATE_API_TOKEN;
@@ -212,6 +216,10 @@ obs_properties_t *hyperate_input_properties(void *data)
 {
 	obs_properties_t *props = obs_properties_create();
 	auto *input = static_cast<HyperateInputSource *>(data);
+
+	std::string version_label = std::string(obs_module_text("Source.Version")) + ": " + HYPERATE_PLUGIN_VERSION;
+	obs_properties_add_text(props, "plugin_version", version_label.c_str(), OBS_TEXT_INFO);
+
 	obs_properties_add_text(props, "channel_id", obs_module_text("Source.ChannelId"), OBS_TEXT_DEFAULT);
 
 	obs_property_t *hyperate_link =

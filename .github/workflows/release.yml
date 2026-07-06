@@ -172,6 +172,7 @@ jobs:
     timeout-minutes: 25
     env:
       VCPKG_DEFAULT_TRIPLET: x64-windows
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-binary-cache
       VCPKG_BINARY_SOURCES: "clear;default,readwrite"
     defaults:
       run:
@@ -183,11 +184,21 @@ jobs:
       - name: Install installer dependencies
         run: choco install nsis -y --no-progress
 
-      - name: Cache vcpkg packages
+      - name: Prepare vcpkg binary cache directory
+        run: New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+
+      # Cache vcpkg's compiled binary packages (openssl, libuv, libwebsockets, ...).
+      # VCPKG_DEFAULT_BINARY_CACHE is set in this job's env, so unlike the runner's
+      # VCPKG_INSTALLATION_ROOT it resolves in the ${{ env.* }} context and the path
+      # actually exists at save time. Restoring these drops the Windows build from
+      # ~18 min to ~2-3 min.
+      - name: Cache vcpkg binaries
         uses: actions/cache@v4
         with:
-          path: ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
-          key: windows-vcpkg-libwebsockets-v1
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-windows-libwebsockets-${{ hashFiles('.github/workflows/release.yml') }}
+          restore-keys: |
+            vcpkg-windows-libwebsockets-
 
       - name: Install libwebsockets
         run: |
