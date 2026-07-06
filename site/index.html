@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OBS HypeRate — Your heartbeat, live in your stream</title>
+<meta name="description" content="Native OBS Studio plugin that turns your real heart rate into on-stream effects: camera shake, glow, BPM display and threshold triggers. Windows, macOS, Linux.">
+<meta property="og:title" content="OBS HypeRate — Your heartbeat, live in your stream">
+<meta property="og:description" content="Native OBS plugin: heartbeat camera shake, glow, BPM display & threshold triggers. No browser sources, no automation tools.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://obs.hyperate.io/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff3b5c' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0d12; --bg2:#0e1118; --panel:#141824; --panel2:#1a1f2e;
+  --line:#232a3b; --text:#e9edf5; --muted:#98a2b8;
+  --accent:#ff3b5c; --accent-soft:#ff7a8a; --accent-dim:rgba(255,59,92,.14);
+  --ok:#4cd7a4; --warn:#ffc857; --hot:#ff8a3d; --peak:#ff3b5c;
+  --radius:18px; --maxw:1100px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(255,59,92,.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 30%, rgba(76,110,255,.08), transparent 60%),
+    var(--bg);
+  color:var(--text); line-height:1.6; overflow-x:hidden;
+}
+a{color:var(--accent-soft); text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{line-height:1.15; margin:0 0 .5em}
+img,svg{display:block}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 22px}
+section{padding:84px 0}
+.kicker{display:inline-flex;align-items:center;gap:8px;font-size:.85rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-soft);background:var(--accent-dim);border:1px solid rgba(255,59,92,.25);padding:6px 14px;border-radius:999px}
+.sub{color:var(--muted);font-size:1.12rem;max-width:640px}
+
+/* ---------- header ---------- */
+header{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:rgba(11,13,18,.75);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;gap:20px;height:64px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.05rem;color:var(--text)}
+.logo:hover{text-decoration:none}
+.logo svg{width:26px;height:26px;transform-origin:center}
+.nav-links{display:flex;gap:22px;margin-left:auto;font-size:.95rem}
+.nav-links a{color:var(--muted);font-weight:500}
+.nav-links a:hover{color:var(--text);text-decoration:none}
+.lang{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-left:12px}
+.lang button{all:unset;cursor:pointer;padding:5px 12px;font-size:.85rem;font-weight:700;color:var(--muted)}
+.lang button.active{background:var(--accent);color:#fff}
+.gh-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:7px 14px;color:var(--text);font-weight:600;font-size:.9rem}
+.gh-btn:hover{border-color:var(--accent);text-decoration:none}
+@media(max-width:760px){.nav-links{display:none}}
+
+/* ---------- hero ---------- */
+.hero{padding:96px 0 40px;position:relative}
+.hero .wrap{display:grid;grid-template-columns:1.15fr .85fr;gap:48px;align-items:center}
+@media(max-width:900px){.hero .wrap{grid-template-columns:1fr}}
+.hero h1{font-size:clamp(2.4rem,5.2vw,3.9rem);font-weight:900;letter-spacing:-.02em}
+.hero h1 .pulse-word{color:var(--accent)}
+.cta-row{display:flex;flex-wrap:wrap;gap:14px;margin:28px 0 14px}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:14px 26px;border-radius:14px;font-weight:800;font-size:1.02rem;border:1px solid transparent;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.btn:hover{text-decoration:none;transform:translateY(-2px)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),#ff2447);color:#fff;box-shadow:0 8px 30px rgba(255,59,92,.35)}
+.btn-primary:hover{box-shadow:0 12px 40px rgba(255,59,92,.5)}
+.btn-ghost{border-color:var(--line);color:var(--text);background:var(--panel)}
+.btn-ghost:hover{border-color:var(--accent)}
+.platforms-note{color:var(--muted);font-size:.92rem}
+.hero-heart-stage{position:relative;display:grid;place-items:center;min-height:340px}
+.big-heart{width:min(270px,60vw);cursor:pointer;filter:drop-shadow(0 0 34px rgba(255,59,92,.45));transform-origin:center;user-select:none;-webkit-tap-highlight-color:transparent}
+.big-heart path{fill:url(#heartGrad)}
+.hero-bpm{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums;background:rgba(20,24,36,.8);border:1px solid var(--line);border-radius:14px;padding:8px 18px;backdrop-filter:blur(8px)}
+.hero-bpm b{font-size:2rem;color:var(--accent-soft)}
+.hero-bpm span{color:var(--muted);font-weight:600;font-size:.9rem}
+.hero-hint{position:absolute;top:6px;left:50%;transform:translateX(-50%);color:var(--muted);font-size:.85rem;opacity:.85;white-space:nowrap}
+.ecg{position:absolute;left:0;right:0;bottom:-6px;height:110px;opacity:.35;pointer-events:none;overflow:hidden}
+.ecg svg{height:110px}
+.ecg-scroll{animation:ecg-move 6s linear infinite}
+@keyframes ecg-move{to{transform:translateX(-600px)}}
+
+/* floating heart particles */
+.heart-particle{position:absolute;font-size:18px;pointer-events:none;animation:floatUp 1.6s ease-out forwards;z-index:5}
+@keyframes floatUp{
+  0%{opacity:0;transform:translate(0,0) scale(.6)}
+  15%{opacity:1}
+  100%{opacity:0;transform:translate(var(--dx,0),-130px) scale(1.15) rotate(var(--rot,0deg))}
+}
+
+/* ---------- demo ---------- */
+.demo-grid{display:grid;grid-template-columns:1.25fr .75fr;gap:28px;align-items:start;margin-top:36px}
+@media(max-width:900px){.demo-grid{grid-template-columns:1fr}}
+.preview-shell{position:relative}
+.preview{position:relative;aspect-ratio:16/9;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:#05060a;transition:box-shadow .12s}
+.scene{position:absolute;inset:0;transform:scale(1.045)} /* overscan, wie im Plugin */
+.scene-bg{position:absolute;inset:0;background:
+  radial-gradient(500px 260px at 75% 18%, rgba(120,140,255,.20), transparent 70%),
+  linear-gradient(180deg,#101528 0%,#0a0e1c 55%,#070a13 100%)}
+.moon{position:absolute;top:9%;right:14%;width:11%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 35% 35%,#f3f5ff,#aab4e8 70%);box-shadow:0 0 40px rgba(190,200,255,.5)}
+.mountains{position:absolute;bottom:22%;left:0;right:0;height:34%;background:linear-gradient(180deg,#141a30,#0c1020);clip-path:polygon(0 100%,0 62%,10% 34%,20% 66%,31% 22%,43% 70%,54% 30%,66% 64%,78% 18%,90% 58%,100% 40%,100% 100%)}
+.floor{position:absolute;bottom:0;left:0;right:0;height:23%;background:linear-gradient(180deg,#0b0f1d,#080b14);}
+.floor::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 46px,rgba(140,160,255,.07) 46px 47px),repeating-linear-gradient(0deg,transparent 0 18px,rgba(140,160,255,.05) 18px 19px)}
+.ghost{position:absolute;bottom:24%;right:20%;font-size:clamp(28px,5vw,54px);opacity:0;transform:translateY(14px) scale(.8);transition:opacity .3s,transform .3s;filter:drop-shadow(0 0 14px rgba(160,180,255,.6))}
+.preview.alerting .ghost{opacity:1;transform:translateY(0) scale(1)}
+.vignette{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s;background:radial-gradient(ellipse at center,transparent 52%,rgba(255,30,60,.42) 100%)}
+.preview.alerting .vignette{opacity:1;animation:vigPulse 1s ease-in-out infinite}
+@keyframes vigPulse{50%{opacity:.55}}
+.webcam{position:absolute;left:3.5%;bottom:5%;width:26%;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,#1c2236,#12162a);padding:4% 2% 2.4%;text-align:center;transition:box-shadow .1s}
+.webcam .face{font-size:clamp(26px,4.6vw,46px);line-height:1}
+.webcam .cam-label{font-size:clamp(8px,1.1vw,11px);color:var(--muted);margin-top:6px;font-weight:600;letter-spacing:.04em}
+.bpm-overlay{position:absolute;top:5%;right:3.5%;display:flex;align-items:center;gap:8px;background:rgba(8,10,18,.72);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:6px 14px;font-variant-numeric:tabular-nums;backdrop-filter:blur(6px)}
+.bpm-overlay .mini-heart{width:clamp(14px,1.9vw,20px);height:clamp(14px,1.9vw,20px);transform-origin:center}
+.bpm-overlay .mini-heart path{fill:var(--accent)}
+.bpm-overlay b{font-size:clamp(14px,2.2vw,22px)}
+.bpm-overlay small{color:var(--muted);font-weight:700}
+.alert-overlay{position:absolute;top:7%;left:50%;transform:translateX(-50%) scale(.85);opacity:0;transition:opacity .2s,transform .2s;background:rgba(255,30,60,.16);border:1px solid rgba(255,59,92,.65);color:#ffb3c0;border-radius:12px;padding:7px 16px;font-weight:900;letter-spacing:.05em;font-size:clamp(10px,1.6vw,15px);white-space:nowrap;backdrop-filter:blur(4px)}
+.preview.alerting .alert-overlay{opacity:1;transform:translateX(-50%) scale(1);animation:alertShake .5s ease-in-out infinite}
+@keyframes alertShake{25%{transform:translateX(-50%) scale(1) rotate(-1.3deg)}75%{transform:translateX(-50%) scale(1) rotate(1.3deg)}}
+.preview-caption{margin-top:12px;color:var(--muted);font-size:.88rem;text-align:center}
+
+.controls{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+.controls h3{font-size:1.05rem;margin-bottom:18px}
+.ctrl-group{margin-bottom:22px}
+.ctrl-label{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:.92rem;margin-bottom:8px}
+.ctrl-label output{color:var(--accent-soft);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+.zone-pill{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:6px 14px;font-weight:800;font-size:.9rem;border:1px solid;transition:all .3s}
+.zone-dot{width:9px;height:9px;border-radius:50%;background:currentColor}
+.hype-btn{width:100%;margin-top:4px;background:linear-gradient(135deg,#ff8a3d,var(--accent));color:#fff;border:none;border-radius:12px;padding:14px;font-size:1.05rem;font-weight:900;cursor:pointer;transition:transform .12s,box-shadow .12s;box-shadow:0 6px 22px rgba(255,90,80,.3)}
+.hype-btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(255,90,80,.45)}
+.hype-btn:active{transform:translateY(1px) scale(.98)}
+.ctrl-note{color:var(--muted);font-size:.83rem;margin-top:14px}
+
+/* ---------- features ---------- */
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:40px}
+@media(max-width:900px){.grid3{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.grid3{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:26px;transition:transform .18s,border-color .18s}
+.card:hover{transform:translateY(-4px);border-color:rgba(255,59,92,.45)}
+.card .icon{font-size:1.9rem;margin-bottom:12px}
+.card h3{font-size:1.08rem}
+.card p{color:var(--muted);font-size:.95rem;margin:0}
+
+/* ---------- how ---------- */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:40px;counter-reset:step}
+@media(max-width:760px){.steps{grid-template-columns:1fr}}
+.step{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:30px 26px 26px}
+.step::before{counter-increment:step;content:counter(step);position:absolute;top:-16px;left:22px;width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#ff2447);color:#fff;font-weight:900;display:grid;place-items:center;box-shadow:0 6px 18px rgba(255,59,92,.4)}
+.step h3{font-size:1.05rem;margin-top:4px}
+.step p{color:var(--muted);font-size:.95rem;margin:0}
+.devices-note{margin-top:26px;text-align:center;color:var(--muted)}
+.devices-note b{color:var(--text)}
+
+/* ---------- download ---------- */
+.dl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:40px}
+@media(max-width:860px){.dl-grid{grid-template-columns:1fr}}
+.dl-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:28px;display:flex;flex-direction:column;gap:14px;position:relative}
+.dl-card.recommended{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 14px 40px rgba(255,59,92,.18)}
+.dl-card .os-ico{font-size:2.1rem}
+.dl-card h3{margin:0;font-size:1.15rem}
+.dl-req{color:var(--muted);font-size:.85rem;margin:-6px 0 4px}
+.dl-btn{display:block;text-align:center;border-radius:12px;padding:12px;font-weight:800;border:1px solid var(--line);color:var(--text)}
+.dl-btn:hover{text-decoration:none;border-color:var(--accent)}
+.dl-btn.primary{background:linear-gradient(135deg,var(--accent),#ff2447);border-color:transparent;color:#fff}
+.dl-note{color:var(--muted);font-size:.8rem;margin:0}
+.you-badge{position:absolute;top:-12px;right:16px;background:var(--accent);color:#fff;font-size:.75rem;font-weight:900;padding:4px 12px;border-radius:999px;letter-spacing:.04em}
+.dl-all{margin-top:26px;text-align:center}
+.version-badge{display:inline-block;margin-left:10px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ---------- faq ---------- */
+.faq{max-width:760px;margin:40px auto 0}
+details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 22px;margin-bottom:12px}
+details summary{cursor:pointer;font-weight:700;padding:14px 0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+details summary::after{content:"+";font-size:1.3rem;color:var(--accent-soft);transition:transform .2s}
+details[open] summary::after{transform:rotate(45deg)}
+details p{color:var(--muted);margin:0 0 16px}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line);padding:44px 0;color:var(--muted);font-size:.9rem}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center}
+.foot-links{display:flex;gap:20px}
+
+@media (prefers-reduced-motion: reduce){
+  .ecg-scroll{animation:none}
+  .preview.alerting .alert-overlay{animation:none}
+  .preview.alerting .vignette{animation:none}
+  *{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="heartGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff7a8a"/><stop offset="1" stop-color="#ff2447"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="#top" aria-label="OBS HypeRate">
+      <svg id="logoHeart" viewBox="0 0 24 24"><path fill="url(#heartGrad)" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+      OBS&nbsp;HypeRate
+    </a>
+    <nav class="nav-links">
+      <a href="#demo" data-i18n="nav.demo">Live demo</a>
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#how" data-i18n="nav.how">How it works</a>
+      <a href="#download" data-i18n="nav.download">Download</a>
+    </nav>
+    <div class="lang" role="group" aria-label="Language">
+      <button id="langEN">EN</button><button id="langDE">DE</button>
+    </div>
+    <a class="gh-btn" href="https://github.com/alexholzreiter/obs-hyperate-plugin" target="_blank" rel="noopener">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</header>
+
+<!-- ================= HERO ================= -->
+<section class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <span class="kicker" data-i18n="hero.badge">Native OBS Studio Plugin</span>
+      <h1><span data-i18n="hero.title1">Your heartbeat.</span><br><span class="pulse-word" data-i18n="hero.title2">Live in your stream.</span></h1>
+      <p class="sub" data-i18n="hero.sub">OBS HypeRate turns your real heart rate into stunning native OBS effects — camera shake, glow, BPM display and panic triggers. No browser sources. No automation tools. Just your pulse.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#download" data-i18n="hero.ctaDownload">⬇ Free Download</a>
+        <a class="btn btn-ghost" href="#demo" data-i18n="hero.ctaDemo">▶ Try the live demo</a>
+      </div>
+      <p class="platforms-note" data-i18n="hero.platforms">Windows · macOS · Linux — free &amp; open source</p>
+    </div>
+    <div class="hero-heart-stage" id="heartStage">
+      <p class="hero-hint" data-i18n="hero.hint">click me! 👇</p>
+      <svg class="big-heart" id="bigHeart" viewBox="0 0 24 24" role="button" aria-label="Beating heart">
+        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+      </svg>
+      <div class="hero-bpm"><b id="heroBpm">80</b><span>BPM</span></div>
+    </div>
+  </div>
+  <div class="ecg" aria-hidden="true">
+    <svg width="1200" height="110" viewBox="0 0 1200 110">
+      <g class="ecg-scroll" fill="none" stroke="#ff3b5c" stroke-width="2">
+        <path d="M0 60 H90 L110 60 125 28 140 92 155 45 170 60 H260 L280 60 295 30 310 88 325 47 340 60 H430 L450 60 465 26 480 90 495 44 510 60 H600 M600 60 H690 L710 60 725 28 740 92 755 45 770 60 H860 L880 60 895 30 910 88 925 47 940 60 H1030 L1050 60 1065 26 1080 90 1095 44 1110 60 H1200"/>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<!-- ================= DEMO ================= -->
+<section id="demo">
+  <div class="wrap">
+    <span class="kicker" data-i18n="demo.kicker">Interactive</span>
+    <h2 data-i18n="demo.title">Feel it. Right here.</h2>
+    <p class="sub" data-i18n="demo.sub">Drag the heart-rate slider or hit the jumpscare button — this preview reacts exactly like your OBS scene would.</p>
+
+    <div class="demo-grid">
+      <div class="preview-shell">
+        <div class="preview" id="preview">
+          <div class="scene" id="scene">
+            <div class="scene-bg"></div>
+            <div class="moon"></div>
+            <div class="mountains"></div>
+            <div class="floor"></div>
+            <div class="ghost">👻</div>
+            <div class="webcam" id="webcam">
+              <div class="face" id="face">🙂</div>
+              <div class="cam-label" data-i18n="demo.webcam">YOUR WEBCAM</div>
+            </div>
+            <div class="bpm-overlay">
+              <svg class="mini-heart" id="miniHeart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              <b id="previewBpm">80</b><small>BPM</small>
+            </div>
+            <div class="alert-overlay" data-i18n="demo.alert">😱 HEART RATE CRITICAL!</div>
+          </div>
+          <div class="vignette"></div>
+        </div>
+        <p class="preview-caption" data-i18n="demo.caption">Camera Shake + Glow + BPM Display + Threshold Toggle — all running in this preview.</p>
+      </div>
+
+      <div class="controls">
+        <h3 data-i18n="demo.controlsTitle">Simulation</h3>
+        <div class="ctrl-group">
+          <div class="ctrl-label"><span data-i18n="demo.bpmLabel">Heart rate</span><output id="bpmOut">80 BPM</output></div>
+          <input type="range" id="bpmSlider" min="60" max="180" value="80" step="1">
+        </div>
+        <div class="ctrl-group">
+          <div class="ctrl-label"><span data-i18n="demo.zoneLabel">Zone</span></div>
+          <span class="zone-pill" id="zonePill"><span class="zone-dot"></span><span id="zoneName">Resting</span><span id="zoneRange" style="opacity:.65;font-weight:600"></span></span>
+        </div>
+        <div class="ctrl-group">
+          <div class="ctrl-label"><span data-i18n="demo.thresholdLabel">Panic threshold</span><output id="thrOut">130 BPM</output></div>
+          <input type="range" id="thrSlider" min="100" max="170" value="130" step="5">
+        </div>
+        <button class="hype-btn" id="hypeBtn" data-i18n="demo.hype">😱 Jumpscare!</button>
+        <p class="ctrl-note" data-i18n="demo.note">In OBS this data comes live from your heart-rate monitor via the HypeRate app — the filters react in real time, frame by frame.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FEATURES ================= -->
+<section id="features" style="background:var(--bg2);border-block:1px solid var(--line)">
+  <div class="wrap">
+    <span class="kicker" data-i18n="features.kicker">Features</span>
+    <h2 data-i18n="features.title">Everything your pulse can do</h2>
+    <p class="sub" data-i18n="features.sub">Real OBS sources and filters, rendered natively inside OBS — buttery smooth at any frame rate.</p>
+    <div class="grid3">
+      <div class="card"><div class="icon">📷</div><h3 data-i18n="f1.title">Heartbeat Camera Shake</h3><p data-i18n="f1.text">Your webcam pulses with every real heartbeat. Intensity scales smoothly between your threshold and max BPM — subtle at rest, wild in panic.</p></div>
+      <div class="card"><div class="icon">✨</div><h3 data-i18n="f2.title">Heartbeat Glow</h3><p data-i18n="f2.text">A red glow that breathes with your pulse. Perfect on your webcam or facecam frame during horror games and ranked matches.</p></div>
+      <div class="card"><div class="icon">🔢</div><h3 data-i18n="f3.title">BPM Display</h3><p data-i18n="f3.text">A clean, native readout of your live heart rate — no browser source, no lag, styled to fit your overlay.</p></div>
+      <div class="card"><div class="icon">🚨</div><h3 data-i18n="f4.title">Threshold Toggle</h3><p data-i18n="f4.text">Reveal any source when your heart races: panic overlays, alarm GIFs, "HE'S SCARED" banners. Fully automatic, on the fly.</p></div>
+      <div class="card"><div class="icon">📊</div><h3 data-i18n="f5.title">Zones &amp; Smoothing</h3><p data-i18n="f5.text">Four heart-rate zones from Resting to Peak plus adjustable smoothing — from raw and twitchy to silky calm.</p></div>
+      <div class="card"><div class="icon">⚡</div><h3 data-i18n="f6.title">100% Native</h3><p data-i18n="f6.text">A real C++ OBS plugin. No browser sources, no Streamer.bot, no external tools eating your CPU. Install, connect, stream.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOW ================= -->
+<section id="how">
+  <div class="wrap">
+    <span class="kicker" data-i18n="how.kicker">Setup</span>
+    <h2 data-i18n="how.title">Live in 3 minutes</h2>
+    <div class="steps">
+      <div class="step"><h3 data-i18n="how.s1t">Install</h3><p data-i18n="how.s1x">Grab the installer for your platform below and restart OBS Studio.</p></div>
+      <div class="step"><h3 data-i18n="how.s2t">Connect</h3><p data-i18n="how.s2x">Add the "HypeRate Heart Rate Input" source and enter the HypeRate ID shown in your HypeRate app.</p></div>
+      <div class="step"><h3 data-i18n="how.s3t">React</h3><p data-i18n="how.s3x">Add heartbeat filters to your webcam or any source. Your pulse does the rest — live.</p></div>
+    </div>
+    <p class="devices-note" data-i18n="how.devices">Works with <b>Apple Watch, Wear OS, Garmin</b> &amp; many more — via the free <a href="https://hyperate.io" target="_blank" rel="noopener">HypeRate app</a>.</p>
+  </div>
+</section>
+
+<!-- ================= DOWNLOAD ================= -->
+<section id="download" style="background:var(--bg2);border-block:1px solid var(--line)">
+  <div class="wrap">
+    <span class="kicker" data-i18n="dl.kicker">Get it</span>
+    <h2><span data-i18n="dl.title">Download</span><span class="version-badge" id="versionBadge">v0.1.10</span></h2>
+    <p class="sub" data-i18n="dl.sub">Free for everyone. Pick your platform:</p>
+    <div class="dl-grid">
+      <div class="dl-card" id="card-win">
+        <div class="os-ico">🪟</div>
+        <h3>Windows</h3>
+        <p class="dl-req" data-i18n="dl.reqWin">Windows 10/11 · OBS Studio 30+</p>
+        <a class="dl-btn primary" id="dl-win-installer" href="https://github.com/alexholzreiter/obs-hyperate-plugin/releases/latest" data-i18n="dl.installer">Installer (recommended)</a>
+        <a class="dl-btn" id="dl-win-zip" href="https://github.com/alexholzreiter/obs-hyperate-plugin/releases/latest" data-i18n="dl.zip">ZIP (manual)</a>
+      </div>
+      <div class="dl-card" id="card-mac">
+        <div class="os-ico">🍎</div>
+        <h3>macOS</h3>
+        <p class="dl-req" data-i18n="dl.reqMac">macOS 13+ · OBS Studio 30+</p>
+        <a class="dl-btn primary" id="dl-mac-installer" href="https://github.com/alexholzreiter/obs-hyperate-plugin/releases/latest" data-i18n="dl.installer">Installer (recommended)</a>
+        <a class="dl-btn" id="dl-mac-zip" href="https://github.com/alexholzreiter/obs-hyperate-plugin/releases/latest" data-i18n="dl.zip">ZIP (manual)</a>
+        <p class="dl-note" data-i18n="dl.macNote">Installs per-user — no admin password needed.</p>
+      </div>
+      <div class="dl-card" id="card-linux">
+        <div class="os-ico">🐧</div>
+        <h3>Linux</h3>
+        <p class="dl-req" data-i18n="dl.reqLinux">Ubuntu 24.04 x86_64 · OBS Studio 30+</p>
+        <a class="dl-btn primary" id="dl-linux-installer" href="https://github.com/alexholzreiter/obs-hyperate-plugin/releases/latest" data-i18n="dl.installer">Installer (recommended)</a>
+        <a class="dl-btn" id="dl-linux-zip" href="https://github.com/alexholzreiter/obs-hyperate-plugin/releases/latest" data-i18n="dl.zip">ZIP (manual)</a>
+      </div>
+    </div>
+    <p class="dl-all"><a href="https://github.com/alexholzreiter/obs-hyperate-plugin/releases" target="_blank" rel="noopener" data-i18n="dl.all">All releases &amp; changelogs on GitHub →</a></p>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section id="faq">
+  <div class="wrap">
+    <span class="kicker">FAQ</span>
+    <h2 data-i18n="faq.title">Quick answers</h2>
+    <div class="faq">
+      <details><summary data-i18n="faq.q1">Is it really free?</summary><p data-i18n="faq.a1">Yes. The plugin is free to download and use, and the source code is on GitHub.</p></details>
+      <details><summary data-i18n="faq.q2">Which heart-rate monitors work?</summary><p data-i18n="faq.a2">Anything the HypeRate app supports: Apple Watch, Wear OS, Garmin, Polar, ANT+/BLE chest straps and more. The plugin only needs your HypeRate ID.</p></details>
+      <details><summary data-i18n="faq.q3">Do I need browser sources or Streamer.bot?</summary><p data-i18n="faq.a3">No. This is a native OBS plugin written in C++. Everything renders directly inside OBS — no browser overlays, no external automation tools, no extra latency.</p></details>
+      <details><summary data-i18n="faq.q4">Horror games — what's the play?</summary><p data-i18n="faq.a4">Add Camera Shake + Glow to your facecam and a Threshold Toggle on a "PANIC" overlay at ~130 BPM. When the jumpscare lands, your whole stream feels it. Chat loves it.</p></details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span data-i18n="footer.made">Made with ❤️ and a racing pulse.</span>
+    <div class="foot-links">
+      <a href="https://hyperate.io" target="_blank" rel="noopener">hyperate.io</a>
+      <a href="https://github.com/alexholzreiter/obs-hyperate-plugin" target="_blank" rel="noopener">GitHub</a>
+      <a href="#top" data-i18n="footer.top">Back to top ↑</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ============================== i18n ============================== */
+const I18N = {
+en: {
+  "title":"OBS HypeRate — Your heartbeat, live in your stream",
+  "nav.demo":"Live demo","nav.features":"Features","nav.how":"How it works","nav.download":"Download",
+  "hero.badge":"Native OBS Studio Plugin",
+  "hero.title1":"Your heartbeat.","hero.title2":"Live in your stream.",
+  "hero.sub":"OBS HypeRate turns your real heart rate into stunning native OBS effects — camera shake, glow, BPM display and panic triggers. No browser sources. No automation tools. Just your pulse.",
+  "hero.ctaDownload":"⬇ Free Download","hero.ctaDemo":"▶ Try the live demo",
+  "hero.platforms":"Windows · macOS · Linux — free download, source on GitHub",
+  "hero.hint":"click me! 👇",
+  "demo.kicker":"Interactive","demo.title":"Feel it. Right here.",
+  "demo.sub":"Drag the heart-rate slider or hit the jumpscare button — this preview reacts exactly like your OBS scene would.",
+  "demo.webcam":"YOUR WEBCAM","demo.alert":"😱 HEART RATE CRITICAL!",
+  "demo.caption":"Camera Shake + Glow + BPM Display + Threshold Toggle — all running live in this preview.",
+  "demo.controlsTitle":"Simulation","demo.bpmLabel":"Heart rate","demo.zoneLabel":"Zone",
+  "demo.thresholdLabel":"Panic threshold","demo.hype":"😱 Jumpscare!",
+  "demo.note":"In OBS this data comes live from your heart-rate monitor via the HypeRate app — the filters react in real time, frame by frame.",
+  "zone.resting":"Resting","zone.active":"Active","zone.high":"High","zone.peak":"Peak",
+  "features.kicker":"Features","features.title":"Everything your pulse can do",
+  "features.sub":"Real OBS sources and filters, rendered natively inside OBS — buttery smooth at any frame rate.",
+  "f1.title":"Heartbeat Camera Shake","f1.text":"Your webcam pulses with every real heartbeat. Intensity scales smoothly between your threshold and max BPM — subtle at rest, wild in panic.",
+  "f2.title":"Heartbeat Glow","f2.text":"A red glow that breathes with your pulse. Perfect on your webcam or facecam frame during horror games and ranked matches.",
+  "f3.title":"BPM Display","f3.text":"A clean, native readout of your live heart rate — no browser source, no lag, styled to fit your overlay.",
+  "f4.title":"Threshold Toggle","f4.text":"Reveal any source when your heart races: panic overlays, alarm GIFs, \"HE'S SCARED\" banners. Fully automatic, on the fly.",
+  "f5.title":"Zones & Smoothing","f5.text":"Four heart-rate zones from Resting to Peak plus adjustable smoothing — from raw and twitchy to silky calm.",
+  "f6.title":"100% Native","f6.text":"A real C++ OBS plugin. No browser sources, no Streamer.bot, no external tools eating your CPU. Install, connect, stream.",
+  "how.kicker":"Setup","how.title":"Live in 3 minutes",
+  "how.s1t":"Install","how.s1x":"Grab the installer for your platform below and restart OBS Studio.",
+  "how.s2t":"Connect","how.s2x":"Add the \"HypeRate Heart Rate Input\" source and enter the HypeRate ID shown in your HypeRate app.",
+  "how.s3t":"React","how.s3x":"Add heartbeat filters to your webcam or any source. Your pulse does the rest — live.",
+  "how.devices":"Works with Apple Watch, Wear OS, Garmin & many more — via the free HypeRate app.",
+  "dl.kicker":"Get it","dl.title":"Download","dl.sub":"Free for everyone. Pick your platform:",
+  "dl.reqWin":"Windows 10/11 · OBS Studio 30+","dl.reqMac":"macOS 13+ · OBS Studio 30+","dl.reqLinux":"Ubuntu 24.04 x86_64 · OBS Studio 30+",
+  "dl.installer":"Installer (recommended)","dl.zip":"ZIP (manual)",
+  "dl.macNote":"Installs per-user — no admin password needed.",
+  "dl.all":"All releases & changelogs on GitHub →",
+  "faq.title":"Quick answers",
+  "faq.q1":"Is it really free?","faq.a1":"Yes. The plugin is free to download and use, and the source code is on GitHub.",
+  "faq.q2":"Which heart-rate monitors work?","faq.a2":"Anything the HypeRate app supports: Apple Watch, Wear OS, Garmin, Polar, ANT+/BLE chest straps and more. The plugin only needs your HypeRate ID.",
+  "faq.q3":"Do I need browser sources or Streamer.bot?","faq.a3":"No. This is a native OBS plugin written in C++. Everything renders directly inside OBS — no browser overlays, no external automation tools, no extra latency.",
+  "faq.q4":"Horror games — what's the play?","faq.a4":"Add Camera Shake + Glow to your facecam and a Threshold Toggle on a \"PANIC\" overlay at ~130 BPM. When the jumpscare lands, your whole stream feels it. Chat loves it.",
+  "footer.made":"Made with ❤️ and a racing pulse.","footer.top":"Back to top ↑"
+},
+de: {
+  "title":"OBS HypeRate — Dein Herzschlag, live im Stream",
+  "nav.demo":"Live-Demo","nav.features":"Features","nav.how":"So funktioniert's","nav.download":"Download",
+  "hero.badge":"Natives OBS Studio Plugin",
+  "hero.title1":"Dein Herzschlag.","hero.title2":"Live in deinem Stream.",
+  "hero.sub":"OBS HypeRate verwandelt deine echte Herzfrequenz in native OBS-Effekte — Camera Shake, Glow, BPM-Anzeige und Panik-Trigger. Keine Browser-Quellen. Keine Automatisierungs-Tools. Nur dein Puls.",
+  "hero.ctaDownload":"⬇ Kostenlos herunterladen","hero.ctaDemo":"▶ Live-Demo ausprobieren",
+  "hero.platforms":"Windows · macOS · Linux — kostenloser Download, Quellcode auf GitHub",
+  "hero.hint":"klick mich! 👇",
+  "demo.kicker":"Interaktiv","demo.title":"Spür es. Direkt hier.",
+  "demo.sub":"Zieh am Puls-Regler oder drück den Jumpscare-Button — diese Vorschau reagiert genau wie deine OBS-Szene.",
+  "demo.webcam":"DEINE WEBCAM","demo.alert":"😱 PULS KRITISCH!",
+  "demo.caption":"Camera Shake + Glow + BPM-Anzeige + Schwellwert-Trigger — alles live in dieser Vorschau.",
+  "demo.controlsTitle":"Simulation","demo.bpmLabel":"Herzfrequenz","demo.zoneLabel":"Zone",
+  "demo.thresholdLabel":"Panik-Schwelle","demo.hype":"😱 Jumpscare!",
+  "demo.note":"In OBS kommen diese Daten live von deinem Pulsmesser über die HypeRate-App — die Filter reagieren in Echtzeit, Frame für Frame.",
+  "zone.resting":"Ruhe","zone.active":"Aktiv","zone.high":"Hoch","zone.peak":"Maximum",
+  "features.kicker":"Features","features.title":"Alles, was dein Puls kann",
+  "features.sub":"Echte OBS-Quellen und -Filter, nativ in OBS gerendert — butterweich bei jeder Framerate.",
+  "f1.title":"Heartbeat Camera Shake","f1.text":"Deine Webcam pulsiert mit jedem echten Herzschlag. Die Intensität skaliert sanft zwischen Schwellwert und Max-BPM — dezent in Ruhe, wild in Panik.",
+  "f2.title":"Heartbeat Glow","f2.text":"Ein rotes Glühen, das mit deinem Puls atmet. Perfekt auf der Facecam bei Horror-Games und Ranked-Matches.",
+  "f3.title":"BPM-Anzeige","f3.text":"Eine saubere, native Anzeige deiner Live-Herzfrequenz — ohne Browser-Quelle, ohne Lag, passend zu deinem Overlay.",
+  "f4.title":"Schwellwert-Trigger","f4.text":"Blende beliebige Quellen ein, wenn dein Herz rast: Panik-Overlays, Alarm-GIFs, \"ER HAT ANGST\"-Banner. Vollautomatisch.",
+  "f5.title":"Zonen & Glättung","f5.text":"Vier Herzfrequenz-Zonen von Ruhe bis Maximum plus einstellbare Glättung — von roh und zappelig bis seidig ruhig.",
+  "f6.title":"100% Nativ","f6.text":"Ein echtes C++ OBS-Plugin. Keine Browser-Quellen, kein Streamer.bot, keine externen Tools, die deine CPU fressen. Installieren, verbinden, streamen.",
+  "how.kicker":"Setup","how.title":"In 3 Minuten live",
+  "how.s1t":"Installieren","how.s1x":"Lade unten den Installer für deine Plattform und starte OBS Studio neu.",
+  "how.s2t":"Verbinden","how.s2x":"Füge die Quelle \"HypeRate Herzfrequenz Eingabe\" hinzu und trage die HypeRate ID aus deiner HypeRate-App ein.",
+  "how.s3t":"Reagieren","how.s3x":"Füge Heartbeat-Filter auf deine Webcam oder jede andere Quelle hinzu. Den Rest erledigt dein Puls — live.",
+  "how.devices":"Funktioniert mit Apple Watch, Wear OS, Garmin & vielen mehr — über die kostenlose HypeRate-App.",
+  "dl.kicker":"Loslegen","dl.title":"Download","dl.sub":"Kostenlos für alle. Wähl deine Plattform:",
+  "dl.reqWin":"Windows 10/11 · OBS Studio 30+","dl.reqMac":"macOS 13+ · OBS Studio 30+","dl.reqLinux":"Ubuntu 24.04 x86_64 · OBS Studio 30+",
+  "dl.installer":"Installer (empfohlen)","dl.zip":"ZIP (manuell)",
+  "dl.macNote":"Installiert pro Benutzer — kein Admin-Passwort nötig.",
+  "dl.all":"Alle Releases & Changelogs auf GitHub →",
+  "faq.title":"Schnelle Antworten",
+  "faq.q1":"Ist es wirklich kostenlos?","faq.a1":"Ja. Das Plugin ist kostenlos, der Quellcode liegt auf GitHub.",
+  "faq.q2":"Welche Pulsmesser funktionieren?","faq.a2":"Alles, was die HypeRate-App unterstützt: Apple Watch, Wear OS, Garmin, Polar, ANT+/BLE-Brustgurte und mehr. Das Plugin braucht nur deine HypeRate ID.",
+  "faq.q3":"Brauche ich Browser-Quellen oder Streamer.bot?","faq.a3":"Nein. Das ist ein natives OBS-Plugin in C++. Alles rendert direkt in OBS — keine Browser-Overlays, keine externen Tools, keine zusätzliche Latenz.",
+  "faq.q4":"Horror-Games — was ist der Move?","faq.a4":"Camera Shake + Glow auf die Facecam und ein Schwellwert-Trigger auf ein \"PANIK\"-Overlay bei ~130 BPM. Wenn der Jumpscare kommt, spürt ihn dein ganzer Stream. Der Chat feiert's.",
+  "footer.made":"Gemacht mit ❤️ und Herzrasen.","footer.top":"Nach oben ↑"
+}};
+
+let lang = localStorage.getItem('obs-hyperate-lang') ||
+           (navigator.language && navigator.language.toLowerCase().startsWith('de') ? 'de' : 'en');
+
+function t(key){ return (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key; }
+
+function applyLang(next){
+  lang = next;
+  localStorage.setItem('obs-hyperate-lang', lang);
+  document.documentElement.lang = lang;
+  document.title = t('title');
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.getElementById('langEN').classList.toggle('active', lang === 'en');
+  document.getElementById('langDE').classList.toggle('active', lang === 'de');
+  updateZoneUI(true);
+}
+document.getElementById('langEN').addEventListener('click', () => applyLang('en'));
+document.getElementById('langDE').addEventListener('click', () => applyLang('de'));
+
+/* ============================== simulation ============================== */
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const bpmSlider = document.getElementById('bpmSlider');
+const thrSlider = document.getElementById('thrSlider');
+const bpmOut = document.getElementById('bpmOut');
+const thrOut = document.getElementById('thrOut');
+const heroBpm = document.getElementById('heroBpm');
+const previewBpm = document.getElementById('previewBpm');
+const preview = document.getElementById('preview');
+const scene = document.getElementById('scene');
+const face = document.getElementById('face');
+const webcam = document.getElementById('webcam');
+const bigHeart = document.getElementById('bigHeart');
+const miniHeart = document.getElementById('miniHeart');
+const logoHeart = document.getElementById('logoHeart');
+const heartStage = document.getElementById('heartStage');
+const zonePill = document.getElementById('zonePill');
+const zoneName = document.getElementById('zoneName');
+const zoneRange = document.getElementById('zoneRange');
+
+let bpm = 80;          // smoothed, displayed
+let hype = 0;          // decaying jumpscare boost
+let beatTimer = 400;
+let shakeAmp = 0, shakeX = 0, shakeY = 0, shakeDirX = 1, shakeDirY = 0;
+let glow = 0;
+let lastT = performance.now();
+
+const ZONES = [
+  {key:'zone.resting', max:100, color:'#4cd7a4', range:'< 100'},
+  {key:'zone.active',  max:130, color:'#ffc857', range:'100–129'},
+  {key:'zone.high',    max:160, color:'#ff8a3d', range:'130–159'},
+  {key:'zone.peak',    max:999, color:'#ff3b5c', range:'160+'}
+];
+const FACES = ['🙂','😃','😰','😱'];
+
+function currentZoneIdx(v){ return ZONES.findIndex(z => v < z.max); }
+let lastZoneIdx = -1;
+
+function updateZoneUI(force){
+  const idx = currentZoneIdx(bpm);
+  if (idx === lastZoneIdx && !force) return;
+  lastZoneIdx = idx;
+  const z = ZONES[idx];
+  zoneName.textContent = t(z.key);
+  zoneRange.textContent = ' · ' + z.range;
+  zonePill.style.color = z.color;
+  zonePill.style.borderColor = z.color;
+  zonePill.style.background = z.color + '1f';
+  face.textContent = FACES[idx];
+}
+
+function beatPulse(el, scale, dur){
+  if (reduceMotion) return;
+  el.animate(
+    [{transform:'scale(1)'},{transform:`scale(${scale})`},{transform:'scale(1)'}],
+    {duration:dur, easing:'ease-out'}
+  );
+}
+
+function spawnParticle(){
+  if (reduceMotion || document.hidden) return;
+  if (heartStage.querySelectorAll('.heart-particle').length > 14) return;
+  const p = document.createElement('span');
+  p.className = 'heart-particle';
+  p.textContent = ['❤️','💗','💓','🩷'][Math.floor(Math.random()*4)];
+  const rect = bigHeart.getBoundingClientRect();
+  const stage = heartStage.getBoundingClientRect();
+  p.style.left = (rect.left - stage.left + rect.width*(0.25+Math.random()*0.5)) + 'px';
+  p.style.top  = (rect.top - stage.top + rect.height*0.25) + 'px';
+  p.style.setProperty('--dx', (Math.random()*90-45)+'px');
+  p.style.setProperty('--rot', (Math.random()*50-25)+'deg');
+  heartStage.appendChild(p);
+  p.addEventListener('animationend', () => p.remove());
+}
+
+function onBeat(){
+  const intensity = Math.min(1, Math.max(0, (bpm - 100) / 70)); // 100→170 wie im Plugin
+  beatPulse(bigHeart, 1.13 + intensity*0.10, Math.min(300, 30000/bpm));
+  beatPulse(miniHeart, 1.35, 220);
+  beatPulse(logoHeart, 1.25, 220);
+  glow = 0.25 + intensity * 0.75;
+  if (intensity > 0) {
+    shakeAmp = 2 + intensity * 12;
+    const a = Math.random() * Math.PI * 2;
+    shakeDirX = Math.cos(a); shakeDirY = Math.sin(a);
+  }
+  spawnParticle();
+}
+
+function frame(now){
+  const dt = Math.min(50, now - lastT);
+  lastT = now;
+
+  // BPM smoothing toward slider + wander + decaying hype
+  const target = +bpmSlider.value;
+  hype *= Math.exp(-dt / 3500);
+  if (hype < 0.5) hype = 0;
+  const wander = Math.sin(now * 0.00045) * 2.5;
+  const goal = Math.min(200, target + wander + hype);
+  bpm += (goal - bpm) * Math.min(1, dt * 0.0022);
+
+  // beats
+  beatTimer -= dt;
+  if (beatTimer <= 0) { onBeat(); beatTimer += 60000 / bpm; }
+
+  // shake decay (exponential, direction per beat — wie der Filter)
+  shakeAmp *= Math.exp(-dt / 120);
+  if (!reduceMotion && shakeAmp > 0.1) {
+    shakeX = shakeDirX * shakeAmp * (0.6 + Math.random()*0.4);
+    shakeY = shakeDirY * shakeAmp * (0.6 + Math.random()*0.4);
+  } else { shakeX = shakeY = 0; }
+  scene.style.transform = `scale(1.045) translate(${shakeX.toFixed(1)}px, ${shakeY.toFixed(1)}px)`;
+
+  // glow decay
+  glow *= Math.exp(-dt / 260);
+  const g = Math.max(0, Math.min(1, glow));
+  preview.style.boxShadow = `0 0 ${20 + g*46}px rgba(255,59,92,${(0.10 + g*0.55).toFixed(2)})`;
+  webcam.style.boxShadow = `0 0 ${4 + g*26}px rgba(255,59,92,${(g*0.9).toFixed(2)})`;
+
+  // readouts
+  const shown = Math.round(bpm);
+  heroBpm.textContent = shown;
+  previewBpm.textContent = shown;
+  bpmOut.textContent = target + ' BPM';
+
+  // threshold toggle
+  preview.classList.toggle('alerting', bpm >= +thrSlider.value);
+
+  updateZoneUI(false);
+  requestAnimationFrame(frame);
+}
+
+bpmSlider.addEventListener('input', () => { bpmOut.textContent = bpmSlider.value + ' BPM'; });
+thrSlider.addEventListener('input', () => { thrOut.textContent = thrSlider.value + ' BPM'; });
+
+document.getElementById('hypeBtn').addEventListener('click', () => {
+  hype = Math.min(110, hype + 65);
+  for (let i = 0; i < 6; i++) setTimeout(spawnParticle, i * 90);
+});
+bigHeart.addEventListener('click', () => {
+  hype = Math.min(110, hype + 25);
+  for (let i = 0; i < 4; i++) setTimeout(spawnParticle, i * 70);
+});
+
+/* ============================== downloads ============================== */
+function detectOS(){
+  const ua = navigator.userAgent;
+  if (/Windows/i.test(ua)) return 'win';
+  if (/Mac/i.test(ua)) return 'mac';
+  if (/Linux/i.test(ua)) return 'linux';
+  return null;
+}
+const os = detectOS();
+if (os) {
+  const card = document.getElementById('card-' + os);
+  if (card) {
+    card.classList.add('recommended');
+    const badge = document.createElement('span');
+    badge.className = 'you-badge';
+    badge.textContent = lang === 'de' ? 'Dein System' : 'Your system';
+    card.appendChild(badge);
+  }
+}
+
+fetch('https://api.github.com/repos/alexholzreiter/obs-hyperate-plugin/releases/latest')
+  .then(r => r.ok ? r.json() : null)
+  .then(rel => {
+    if (!rel || !rel.assets) return;
+    document.getElementById('versionBadge').textContent = rel.tag_name;
+    const map = [
+      ['dl-win-installer', /windows-x64-installer\.exe$/],
+      ['dl-win-zip',       /windows-x64\.zip$/],
+      ['dl-mac-installer', /macos\.pkg$/],
+      ['dl-mac-zip',       /macos\.zip$/],
+      ['dl-linux-installer', /linux-x86_64-installer\.run$/],
+      ['dl-linux-zip',     /linux-x86_64\.zip$/]
+    ];
+    for (const [id, re] of map) {
+      const asset = rel.assets.find(a => re.test(a.name));
+      if (asset) document.getElementById(id).href = asset.browser_download_url;
+    }
+  })
+  .catch(() => { /* fallback links point to the releases page */ });
+
+/* ============================== boot ============================== */
+applyLang(lang);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
