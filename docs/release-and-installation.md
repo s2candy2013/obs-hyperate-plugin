@@ -62,11 +62,15 @@ Installer alternative:
 obs-hyperate-<version>-macos.pkg
 ```
 
-This installs the plugin system-wide to:
+This installs the plugin for the current user to:
 
 ```text
-/Library/Application Support/obs-studio/plugins/
+~/Library/Application Support/obs-studio/plugins/
 ```
+
+OBS on macOS only loads plugins from this per-user location, not from the
+system-wide `/Library` path, so the installer targets the current user's home
+and does not require an administrator password.
 
 ### Windows
 
@@ -161,7 +165,7 @@ This installs the plugin for the current Linux user to:
 ## Current Packaging Notes
 
 - macOS builds are not signed or notarized yet.
-- macOS PKG installers are unsigned and install system-wide.
+- macOS PKG installers are unsigned and install per-user into `~/Library/Application Support/obs-studio/plugins/`, because OBS on macOS does not scan the system-wide `/Library` location.
 - Windows builds are not code-signed yet.
 - Windows EXE installers are unsigned and install into the selected OBS Studio installation folder. Administrator permission is normally required for `C:\Program Files\obs-studio`.
 - Windows packages bundle only the plugin's WebSocket runtime DLLs. OBS/FFmpeg runtime DLLs are expected to come from the user's OBS installation.

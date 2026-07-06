@@ -70,11 +70,38 @@ jobs:
           rm -rf "${pkgroot}"
           mkdir -p "${pkgroot}/Library/Application Support/obs-studio/plugins"
           ditto build_macos_ninja/obs-hyperate.plugin "${pkgroot}/Library/Application Support/obs-studio/plugins/obs-hyperate.plugin"
+
+          # OBS on macOS only scans ~/Library/Application Support/obs-studio/plugins,
+          # never /Library. A plain component pkg installs system-wide, so wrap it in
+          # a distribution that enables only the currentUserHome domain: the payload
+          # (rooted at Library/...) then lands in the user's home and needs no admin
+          # password.
           pkgbuild \
             --root "${pkgroot}" \
             --identifier "io.hyperate.obs.plugin" \
             --version "${version}" \
             --install-location "/" \
+            "component.pkg"
+
+          cat > distribution.xml <<XML
+          <?xml version="1.0" encoding="utf-8"?>
+          <installer-gui-script minSpecVersion="1">
+              <title>OBS HypeRate</title>
+              <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="false"/>
+              <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+              <choices-outline>
+                  <line choice="default"/>
+              </choices-outline>
+              <choice id="default" title="OBS HypeRate">
+                  <pkg-ref id="io.hyperate.obs.plugin"/>
+              </choice>
+              <pkg-ref id="io.hyperate.obs.plugin" version="${version}">component.pkg</pkg-ref>
+          </installer-gui-script>
+          XML
+
+          productbuild \
+            --distribution distribution.xml \
+            --package-path . \
             "release/obs-hyperate-${version}-macos.pkg"
 
       - uses: actions/upload-artifact@v4
