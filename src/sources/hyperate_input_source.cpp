@@ -16,6 +16,8 @@ struct HyperateInputSource {
 	std::unique_ptr<hyperate::HyperateClient> client;
 	std::string status_note = "Disconnected";
 	std::string last_published_status;
+	hyperate::ConnectionStatus last_refresh_status = hyperate::ConnectionStatus::Disconnected;
+	bool have_last_refresh_status = false;
 	bool checked_legacy_source_name = false;
 };
 
@@ -72,6 +74,29 @@ bool is_connected_or_connecting(const HyperateInputSource *input)
 {
 	const auto status = input->client->status();
 	return status == hyperate::ConnectionStatus::Connecting || status == hyperate::ConnectionStatus::Connected;
+}
+
+// Rebuild the open properties dialog so its Status text and Connect/Disconnect
+// button reflect the current state. This fully re-reads the properties, so it is
+// only triggered when the connection state actually changes (not on every BPM
+// update), otherwise the dialog would flicker and close open dropdowns.
+void request_properties_refresh(HyperateInputSource *input)
+{
+	if (!input || !input->source)
+		return;
+
+	obs_source_t *source = obs_source_get_ref(input->source);
+	if (!source)
+		return;
+
+	obs_queue_task(
+		OBS_TASK_UI,
+		[](void *param) {
+			auto *queued_source = static_cast<obs_source_t *>(param);
+			obs_source_update_properties(queued_source);
+			obs_source_release(queued_source);
+		},
+		source, false);
 }
 
 void hyperate_input_update(void *data, obs_data_t *settings)
@@ -191,8 +216,14 @@ void hyperate_input_tick(void *data, float)
 	migrate_legacy_source_name(input);
 	auto snapshot = hyperate::heart_rate_state().snapshot();
 
-	std::ostringstream status;
 	const auto connection_status = input->client->status();
+	if (!input->have_last_refresh_status || connection_status != input->last_refresh_status) {
+		input->have_last_refresh_status = true;
+		input->last_refresh_status = connection_status;
+		request_properties_refresh(input);
+	}
+
+	std::ostringstream status;
 	if (connection_status == hyperate::ConnectionStatus::Disconnected) {
 		status << input->status_note;
 	} else if (connection_status == hyperate::ConnectionStatus::Connected && snapshot.has_sample) {
