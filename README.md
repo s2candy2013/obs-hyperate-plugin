@@ -4,8 +4,8 @@ Native heart-rate-powered effects for OBS Studio.
 
 OBS HypeRate turns your real heart rate (via [HypeRate](https://hyperate.io)) into
 native OBS sources and filters — heartbeat camera shake, a pulsing glow, an on-stream
-BPM display and threshold-based actions. Everything renders directly inside OBS: no
-browser sources, no Streamer.bot, no external automation tools.
+BPM display and threshold-based actions. Everything renders directly inside OBS — no
+browser sources or extra overlays required.
 
 Available for **Windows, macOS and Linux**. Licensed under **GPLv2**.
 
@@ -183,6 +183,6 @@ matches the OBS Studio ecosystem, which is also GPLv2.
 
 ## Scope
 
-This is intentionally **not** a replacement for Streamer.bot, Touch Portal, SAMMI or
-LioranBoard. It stays focused on native OBS rendering and simple heart-rate-driven
-actions inside OBS.
+The plugin stays focused on doing one thing well: native, real-time heart-rate
+rendering and simple heart-rate-driven actions inside OBS. It works happily alongside
+your existing automation and overlay tools.
