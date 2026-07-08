@@ -63,13 +63,16 @@ jobs:
 
           rm -rf package release
           mkdir -p package release
+
           ditto build_macos_ninja/obs-hyperate.plugin package/obs-hyperate.plugin
+          bash scripts/bundle-macos-dylibs.sh package/obs-hyperate.plugin
+
           ditto -c -k --keepParent package/obs-hyperate.plugin "release/obs-hyperate-${version}-macos.zip"
 
           pkgroot="pkgroot"
           rm -rf "${pkgroot}"
           mkdir -p "${pkgroot}/Library/Application Support/obs-studio/plugins"
-          ditto build_macos_ninja/obs-hyperate.plugin "${pkgroot}/Library/Application Support/obs-studio/plugins/obs-hyperate.plugin"
+          ditto package/obs-hyperate.plugin "${pkgroot}/Library/Application Support/obs-studio/plugins/obs-hyperate.plugin"
 
           # OBS on macOS only scans ~/Library/Application Support/obs-studio/plugins,
           # never /Library. A plain component pkg installs system-wide, so wrap it in

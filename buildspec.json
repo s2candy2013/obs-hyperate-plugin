@@ -23,8 +23,8 @@
   },
   "name": "obs-hyperate",
   "displayName": "OBS HypeRate",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "author": "HypeRate OBS Plugin Contributors",
-  "website": "https://www.hyperate.io",
+  "website": "https://obs.hyperate.io",
   "email": ""
 }

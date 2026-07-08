@@ -68,6 +68,9 @@ This installs the plugin for the current user to:
 ~/Library/Application Support/obs-studio/plugins/
 ```
 
+The macOS packages bundle the required WebSocket/OpenSSL runtime libraries, so
+users do not need Homebrew or `libwebsockets` installed.
+
 OBS on macOS only loads plugins from this per-user location, not from the
 system-wide `/Library` path, so the installer targets the current user's home
 and does not require an administrator password.
