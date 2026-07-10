@@ -201,7 +201,12 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 25
     env:
-      VCPKG_DEFAULT_TRIPLET: x64-windows
+      # Static libs (libwebsockets, OpenSSL, zlib, libuv) linked straight into
+      # obs-hyperate.dll, but still the dynamic MSVC runtime that OBS uses (-md).
+      # Shipping sibling DLLs with generic names (z.dll, uv.dll, libssl-3-x64.dll)
+      # collided with other OBS plugins: Windows loads only one DLL per name per
+      # process, so whichever plugin loaded first won and our plugin failed to load.
+      VCPKG_DEFAULT_TRIPLET: x64-windows-static-md
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-binary-cache
       VCPKG_BINARY_SOURCES: "clear;default,readwrite"
     defaults:
@@ -232,8 +237,8 @@ jobs:
 
       - name: Install libwebsockets
         run: |
-          vcpkg install libwebsockets:x64-windows --clean-after-build
-          "VCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+          vcpkg install libwebsockets:x64-windows-static-md --clean-after-build
+          "VCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static-md" >> $env:GITHUB_ENV
 
       - name: Prepare OBS development files
         run: |
@@ -302,10 +307,14 @@ jobs:
             (Resolve-Path ".deps/obs-build/deps/w32-pthreads").Path
           )
 
+          # The vcpkg toolchain resolves libwebsockets' transitive static dependencies
+          # (OpenSSL, zlib, libuv) through its exported CMake package config.
           $args = @(
             "--preset", "windows-x64",
             "-Dlibobs_DIR=$($libobsConfig.Directory.FullName)",
-            "-DCMAKE_PREFIX_PATH=$($prefixPaths -join ';')"
+            "-DCMAKE_PREFIX_PATH=$($prefixPaths -join ';')",
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake",
+            "-DVCPKG_TARGET_TRIPLET=x64-windows-static-md"
           )
 
           $w32PthreadsConfig = Get-ChildItem ".deps/obs-build" -Recurse -Include "w32-pthreadsConfig.cmake", "w32-pthreads-config.cmake" | Select-Object -First 1
@@ -338,26 +347,13 @@ jobs:
           Copy-Item "build_x64/RelWithDebInfo/obs-hyperate.dll" $binDir
           Copy-Item "data/*" $dataDir -Recurse
 
-          # OBS ships its own FFmpeg/libobs runtime DLLs. Only bundle the
-          # WebSocket runtime that this plugin adds, otherwise the Windows ZIP
-          # grows by tens of MB with DLLs OBS already has.
-          $runtimeDlls = @(
-            "websockets.dll",
-            "libssl-3-x64.dll",
-            "libcrypto-3-x64.dll",
-            "uv.dll",
-            "z.dll",
-            "zlib.dll",
-            "pthreadVC3.dll",
-            "pthreadVCE3.dll",
-            "pthreadVSE3.dll",
-            "legacy.dll"
-          )
-          foreach ($dll in $runtimeDlls) {
-            $source = Join-Path "$env:VCPKG_INSTALLED_DIR/bin" $dll
-            if (Test-Path $source) {
-              Copy-Item $source $binDir
-            }
+          # No sibling runtime DLLs: libwebsockets, OpenSSL, zlib and libuv are
+          # linked statically into obs-hyperate.dll. Verify that, so a regression
+          # back to a shared build fails the release instead of shipping a plugin
+          # that cannot load on machines where the DLL names collide.
+          $extraDlls = Get-ChildItem $binDir -Filter *.dll | Where-Object { $_.Name -ne "obs-hyperate.dll" }
+          if ($extraDlls) {
+            throw "Unexpected runtime DLLs in package: $($extraDlls.Name -join ', ')"
           }
 
           Compress-Archive -Path "$packageRoot/*" -DestinationPath (Join-Path $releaseDir "obs-hyperate-${version}-windows-x64.zip") -Force

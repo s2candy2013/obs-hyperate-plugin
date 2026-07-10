@@ -65,23 +65,51 @@ if(APPLE)
 endif()
 
 if(HYPERATE_WITH_LIBWEBSOCKETS)
-  find_package(PkgConfig QUIET)
-  if(PkgConfig_FOUND)
-    pkg_check_modules(LIBWEBSOCKETS QUIET libwebsockets)
+  # On Windows we link libwebsockets statically via vcpkg. Its exported CMake
+  # package carries the transitive dependencies (OpenSSL, zlib, libuv), so all of
+  # them end up inside obs-hyperate.dll and no sibling DLLs ship. macOS and Linux
+  # keep the proven pkg-config path below.
+  if(WIN32)
+    find_package(libwebsockets CONFIG QUIET)
+    foreach(_candidate websockets libwebsockets::websockets websockets_static)
+      if(TARGET ${_candidate})
+        set(HYPERATE_LWS_TARGET ${_candidate})
+        break()
+      endif()
+    endforeach()
   endif()
 
-  if(NOT LIBWEBSOCKETS_FOUND)
-    find_path(LIBWEBSOCKETS_INCLUDE_DIR libwebsockets.h)
-    find_library(LIBWEBSOCKETS_LIBRARY NAMES websockets libwebsockets)
-    if(LIBWEBSOCKETS_INCLUDE_DIR AND LIBWEBSOCKETS_LIBRARY)
-      set(LIBWEBSOCKETS_FOUND TRUE)
-      set(LIBWEBSOCKETS_INCLUDE_DIRS "${LIBWEBSOCKETS_INCLUDE_DIR}")
-      set(LIBWEBSOCKETS_LIBRARIES "${LIBWEBSOCKETS_LIBRARY}")
+  if(NOT HYPERATE_LWS_TARGET)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+      pkg_check_modules(LIBWEBSOCKETS QUIET libwebsockets)
+    endif()
+
+    if(NOT LIBWEBSOCKETS_FOUND)
+      find_path(LIBWEBSOCKETS_INCLUDE_DIR libwebsockets.h)
+      find_library(LIBWEBSOCKETS_LIBRARY NAMES websockets libwebsockets)
+      if(LIBWEBSOCKETS_INCLUDE_DIR AND LIBWEBSOCKETS_LIBRARY)
+        set(LIBWEBSOCKETS_FOUND TRUE)
+        set(LIBWEBSOCKETS_INCLUDE_DIRS "${LIBWEBSOCKETS_INCLUDE_DIR}")
+        set(LIBWEBSOCKETS_LIBRARIES "${LIBWEBSOCKETS_LIBRARY}")
+      endif()
     endif()
   endif()
 endif()
 
-if(HYPERATE_WITH_LIBWEBSOCKETS AND LIBWEBSOCKETS_FOUND)
+if(HYPERATE_WITH_LIBWEBSOCKETS AND HYPERATE_LWS_TARGET)
+  message(STATUS "Using libwebsockets CMake target: ${HYPERATE_LWS_TARGET}")
+  target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HYPERATE_HAVE_LIBWEBSOCKETS=1)
+  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ${HYPERATE_LWS_TARGET})
+
+  if(WIN32)
+    # Static OpenSSL/libwebsockets pull these in for TLS, sockets and cert stores.
+    target_link_libraries(
+      ${CMAKE_PROJECT_NAME}
+      PRIVATE ws2_32 crypt32 iphlpapi secur32 bcrypt userenv advapi32
+    )
+  endif()
+elseif(HYPERATE_WITH_LIBWEBSOCKETS AND LIBWEBSOCKETS_FOUND)
   target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HYPERATE_HAVE_LIBWEBSOCKETS=1)
   target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${LIBWEBSOCKETS_INCLUDE_DIRS})
   target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE ${LIBWEBSOCKETS_LIBRARY_DIRS})

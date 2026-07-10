@@ -4,7 +4,7 @@
     {
       "name": "website",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "site"],
+      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "/Users/woodryda/Documents/GitHub/obs-hyperate-website"],
       "port": 4173
     }
   ]

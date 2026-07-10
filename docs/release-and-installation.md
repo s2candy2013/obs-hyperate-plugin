@@ -171,7 +171,7 @@ This installs the plugin for the current Linux user to:
 - macOS PKG installers are unsigned and install per-user into `~/Library/Application Support/obs-studio/plugins/`, because OBS on macOS does not scan the system-wide `/Library` location.
 - Windows builds are not code-signed yet.
 - Windows EXE installers are unsigned and install into the selected OBS Studio installation folder. Administrator permission is normally required for `C:\Program Files\obs-studio`.
-- Windows packages bundle only the plugin's WebSocket runtime DLLs. OBS/FFmpeg runtime DLLs are expected to come from the user's OBS installation.
+- Windows packages contain a single self-contained `obs-hyperate.dll`. libwebsockets, OpenSSL, zlib and libuv are linked statically, so no sibling runtime DLLs ship. Earlier versions bundled `websockets.dll`, `libssl-3-x64.dll`, `uv.dll`, `z.dll` and friends; because Windows loads only one DLL per file name per process, those generic names could collide with other OBS plugins and stop `obs-hyperate.dll` from loading. Leftover copies from an older install are inert and can be deleted.
 - Linux `.run` installers are self-extracting shell installers and install per-user.
 - Linux builds target Ubuntu 24.04 x86_64 first.
 - The workflow is a first release pipeline and may need one or two CI iterations to match OBS runner dependency details exactly.
