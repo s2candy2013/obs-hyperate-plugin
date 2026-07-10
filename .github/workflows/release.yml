@@ -309,10 +309,16 @@ jobs:
 
           # The vcpkg toolchain resolves libwebsockets' transitive static dependencies
           # (OpenSSL, zlib, libuv) through its exported CMake package config.
+          #
+          # Only generate RelWithDebInfo, the configuration we actually build. libobs
+          # is built RelWithDebInfo-only, and the vcpkg toolchain sets
+          # CMAKE_MAP_IMPORTED_CONFIG_MINSIZEREL, which stops CMake from falling back
+          # to it for the other configurations the VS generator would emit.
           $args = @(
             "--preset", "windows-x64",
             "-Dlibobs_DIR=$($libobsConfig.Directory.FullName)",
             "-DCMAKE_PREFIX_PATH=$($prefixPaths -join ';')",
+            "-DCMAKE_CONFIGURATION_TYPES=RelWithDebInfo",
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake",
             "-DVCPKG_TARGET_TRIPLET=x64-windows-static-md"
           )
