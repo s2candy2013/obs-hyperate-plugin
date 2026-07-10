@@ -103,10 +103,23 @@ if(HYPERATE_WITH_LIBWEBSOCKETS AND HYPERATE_LWS_TARGET)
   target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ${HYPERATE_LWS_TARGET})
 
   if(WIN32)
-    # Static OpenSSL/libwebsockets pull these in for TLS, sockets and cert stores.
+    # System libraries the static dependencies rely on: OpenSSL needs the TLS and
+    # cert-store APIs, libuv needs sockets plus dbghelp (SymGetOptions,
+    # MiniDumpWriteDump) and the shell/COM APIs for process handling.
     target_link_libraries(
       ${CMAKE_PROJECT_NAME}
-      PRIVATE ws2_32 crypt32 iphlpapi secur32 bcrypt userenv advapi32
+      PRIVATE
+        ws2_32
+        crypt32
+        iphlpapi
+        secur32
+        bcrypt
+        userenv
+        advapi32
+        dbghelp
+        ole32
+        shell32
+        psapi
     )
   endif()
 elseif(HYPERATE_WITH_LIBWEBSOCKETS AND LIBWEBSOCKETS_FOUND)
