@@ -54,7 +54,26 @@ struct BpmDisplaySource {
 	int cached_font_size = 0;
 	int cached_font_flags = 0;
 	bool cached_font_valid = false;
+	uint32_t cached_text_layout_w = 0;
+	// Heart icon
+	gs_texture_t *heart_texture = nullptr;
+	bool heart_texture_tried = false;
+	double heart_beat_phase = 0.0;
+	float heart_scale_delta = 0.0f;
+	std::chrono::steady_clock::time_point last_beat_frame = std::chrono::steady_clock::now();
+	// Per-frame layout (set in bpm_display_render)
+	float heart_layout_x = 0.0f;
+	float heart_layout_y = 0.0f;
+	float heart_layout_size = 0.0f;
+	float text_layout_x = 0.0f;
+	uint32_t text_layout_w = 0;
 };
+
+// Effective canvas width available for the BPM text (full width when no heart icon).
+static uint32_t effective_text_w(const BpmDisplaySource *d)
+{
+	return d->text_layout_w > 0 ? d->text_layout_w : d->width;
+}
 
 enum RenderMode {
 	RenderModeSystemFont = 0,
@@ -140,6 +159,8 @@ void bpm_display_destroy(void *data)
 	auto *display = static_cast<BpmDisplaySource *>(data);
 	if (display->text_texture)
 		gs_texture_destroy(display->text_texture);
+	if (display->heart_texture)
+		gs_texture_destroy(display->heart_texture);
 	delete display;
 }
 
@@ -284,27 +305,30 @@ void ensure_system_font_texture(BpmDisplaySource *display, const std::string &te
 	if (display->cached_font_valid && display->text_texture && display->cached_text == text &&
 	    display->cached_color == color && display->cached_width == display->width &&
 	    display->cached_height == display->height && display->cached_font_face == display->font_face &&
-	    display->cached_font_size == display->font_size && display->cached_font_flags == display->font_flags) {
+	    display->cached_font_size == display->font_size &&
+	    display->cached_font_flags == display->font_flags &&
+	    display->cached_text_layout_w == effective_text_w(display)) {
 		return;
 	}
 
 	invalidate_text_texture(display);
 
 #ifdef __APPLE__
-	if (display->width == 0 || display->height == 0 || text.empty())
+	const uint32_t tex_w = effective_text_w(display);
+	if (tex_w == 0 || display->height == 0 || text.empty())
 		return;
 
-	std::vector<uint8_t> pixels((size_t)display->width * (size_t)display->height * 4, 0);
+	std::vector<uint8_t> pixels((size_t)tex_w * (size_t)display->height * 4, 0);
 
 	CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
 	CGContextRef context =
-		CGBitmapContextCreate(pixels.data(), display->width, display->height, 8, display->width * 4,
+		CGBitmapContextCreate(pixels.data(), tex_w, display->height, 8, tex_w * 4,
 				      color_space, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
 	CGColorSpaceRelease(color_space);
 	if (!context)
 		return;
 
-	CGContextClearRect(context, CGRectMake(0, 0, display->width, display->height));
+	CGContextClearRect(context, CGRectMake(0, 0, tex_w, display->height));
 	CGContextSetShouldAntialias(context, true);
 	CGContextSetAllowsAntialiasing(context, true);
 
@@ -350,7 +374,7 @@ void ensure_system_font_texture(BpmDisplaySource *display, const std::string &te
 		return line;
 	};
 
-	const CGFloat max_text_width = (CGFloat)display->width * 0.92f;
+	const CGFloat max_text_width = (CGFloat)tex_w * 0.92f;
 	const CGFloat max_text_height = (CGFloat)display->height * 0.84f;
 	CGFloat effective_font_size = std::min((CGFloat)display->font_size, std::max((CGFloat)8.0, max_text_height));
 	CTFontRef font = create_font(effective_font_size);
@@ -388,7 +412,7 @@ void ensure_system_font_texture(BpmDisplaySource *display, const std::string &te
 	}
 
 	CGRect ink_bounds = CTLineGetImageBounds(line, context);
-	const double x = ((double)display->width - CGRectGetWidth(ink_bounds)) * 0.5 - CGRectGetMinX(ink_bounds);
+	const double x = ((double)tex_w - CGRectGetWidth(ink_bounds)) * 0.5 - CGRectGetMinX(ink_bounds);
 	const double y = ((double)display->height - CGRectGetHeight(ink_bounds)) * 0.5 - CGRectGetMinY(ink_bounds);
 
 	// OBS uploads the bitmap rows directly as a texture, so draw in bitmap coordinates instead of flipping the
@@ -404,7 +428,7 @@ void ensure_system_font_texture(BpmDisplaySource *display, const std::string &te
 	CGContextRelease(context);
 
 	const uint8_t *texture_data = pixels.data();
-	display->text_texture = gs_texture_create(display->width, display->height, GS_BGRA, 1, &texture_data, 0);
+	display->text_texture = gs_texture_create(tex_w, display->height, GS_BGRA, 1, &texture_data, 0);
 	display->cached_font_valid = display->text_texture != nullptr;
 	display->cached_text = text;
 	display->cached_color = color;
@@ -413,11 +437,13 @@ void ensure_system_font_texture(BpmDisplaySource *display, const std::string &te
 	display->cached_font_face = display->font_face;
 	display->cached_font_size = display->font_size;
 	display->cached_font_flags = display->font_flags;
+	display->cached_text_layout_w = tex_w;
 #elif defined(_WIN32)
-	if (display->width == 0 || display->height == 0 || text.empty())
+	const uint32_t tex_w = effective_text_w(display);
+	if (tex_w == 0 || display->height == 0 || text.empty())
 		return;
 
-	const int width = (int)display->width;
+	const int width = (int)tex_w;
 	const int height = (int)display->height;
 	std::vector<uint8_t> pixels((size_t)width * (size_t)height * 4, 0);
 
@@ -555,7 +581,8 @@ void ensure_system_font_texture(BpmDisplaySource *display, const std::string &te
 	DeleteDC(memory_dc);
 
 	const uint8_t *texture_data = pixels.data();
-	display->text_texture = gs_texture_create(display->width, display->height, GS_BGRA, 1, &texture_data, 0);
+	const uint32_t tex_w2 = effective_text_w(display);
+	display->text_texture = gs_texture_create(tex_w2, display->height, GS_BGRA, 1, &texture_data, 0);
 	display->cached_font_valid = display->text_texture != nullptr;
 	display->cached_text = text;
 	display->cached_color = color;
@@ -564,6 +591,7 @@ void ensure_system_font_texture(BpmDisplaySource *display, const std::string &te
 	display->cached_font_face = display->font_face;
 	display->cached_font_size = display->font_size;
 	display->cached_font_flags = display->font_flags;
+	display->cached_text_layout_w = tex_w2;
 #else
 	UNUSED_PARAMETER(display);
 	UNUSED_PARAMETER(text);
@@ -581,8 +609,11 @@ void draw_system_font(BpmDisplaySource *display, const std::string &text, uint32
 	gs_eparam_t *image = gs_effect_get_param_by_name(effect, "image");
 	gs_effect_set_texture_srgb(image, display->text_texture);
 
+	gs_matrix_push();
+	gs_matrix_translate3f(display->text_layout_x, 0.0f, 0.0f);
 	while (gs_effect_loop(effect, "Draw"))
-		gs_draw_sprite(display->text_texture, 0, display->width, display->height);
+		gs_draw_sprite(display->text_texture, 0, effective_text_w(display), display->height);
+	gs_matrix_pop();
 }
 
 void draw_system_font_glow(BpmDisplaySource *display, const std::string &text, uint32_t color)
@@ -605,13 +636,14 @@ void draw_system_font_glow(BpmDisplaySource *display, const std::string &text, u
 		{-outer, -outer}, {outer, -outer}, {-outer, outer}, {outer, outer},
 	};
 
+	const uint32_t tw = effective_text_w(display);
 	gs_blend_state_push();
 	gs_blend_function(GS_BLEND_SRCALPHA, GS_BLEND_ONE);
 	for (const auto &offset : offsets) {
 		gs_matrix_push();
-		gs_matrix_translate3f(offset[0], offset[1], 0.0f);
+		gs_matrix_translate3f(display->text_layout_x + offset[0], offset[1], 0.0f);
 		while (gs_effect_loop(effect, "Draw"))
-			gs_draw_sprite(display->text_texture, 0, display->width, display->height);
+			gs_draw_sprite(display->text_texture, 0, tw, display->height);
 		gs_matrix_pop();
 	}
 	gs_blend_state_pop();
@@ -627,7 +659,8 @@ void draw_segment_text(BpmDisplaySource *display, const std::string &text, uint3
 	vec4_from_rgba(&color, color_rgba);
 	gs_effect_set_vec4(color_param, &color);
 
-	const float canvas_width = (float)display->width;
+	const float region_w = display->text_layout_w > 0 ? (float)display->text_layout_w : (float)display->width;
+	const float region_x = display->text_layout_x;
 	const float canvas_height = (float)display->height;
 	const float digit_height = canvas_height * 0.78f;
 	float digit_width = 0.0f;
@@ -635,7 +668,7 @@ void draw_segment_text(BpmDisplaySource *display, const std::string &text, uint3
 	float spacing = 0.0f;
 	digit_metrics(display->digit_style, digit_height, &digit_width, &thickness, &spacing);
 	const float total_width = (digit_width * (float)text.size()) + (spacing * (float)(text.size() - 1));
-	const float start_x = (canvas_width - total_width) * 0.5f;
+	const float start_x = region_x + (region_w - total_width) * 0.5f;
 	const float start_y = (canvas_height - digit_height) * 0.5f;
 
 	gs_technique_begin(tech);
@@ -674,6 +707,8 @@ void draw_segment_glow(BpmDisplaySource *display, const std::string &text, uint3
 		{-outer, -outer, 0x28}, {outer, -outer, 0x28}, {-outer, outer, 0x28}, {outer, outer, 0x28},
 	};
 
+	// Glow offsets are applied in the segment draw calls via text_layout_x, so no
+	// additional per-pass translation is needed for the x-axis here.
 	gs_blend_state_push();
 	gs_blend_function(GS_BLEND_SRCALPHA, GS_BLEND_ONE);
 	for (const auto &offset : offsets) {
@@ -685,13 +720,106 @@ void draw_segment_glow(BpmDisplaySource *display, const std::string &text, uint3
 	gs_blend_state_pop();
 }
 
+// ---- Heart icon helpers ----
+
+void ensure_heart_texture(BpmDisplaySource *display)
+{
+	if (display->heart_texture_tried)
+		return;
+	display->heart_texture_tried = true;
+	char *path = obs_module_file("heart.png");
+	if (!path)
+		return;
+	display->heart_texture = gs_texture_create_from_file(path);
+	bfree(path);
+}
+
+void update_heart_pulse(BpmDisplaySource *display, double bpm)
+{
+	const auto now = std::chrono::steady_clock::now();
+	const double dt = std::chrono::duration<double>(now - display->last_beat_frame).count();
+	display->last_beat_frame = now;
+
+	if (bpm <= 0.0) {
+		display->heart_scale_delta *= 0.88f;
+		return;
+	}
+
+	const double beat_interval = std::max(0.2, 60.0 / bpm);
+	display->heart_beat_phase =
+		std::fmod(display->heart_beat_phase + std::max(0.0, dt), beat_interval);
+	const double np = display->heart_beat_phase / beat_interval;
+
+	// Gaussian punch that mimics the systolic peak of an ECG waveform.
+	const auto gauss = [](double x, double mu, double sigma) -> double {
+		const double n = (x - mu) / sigma;
+		return std::exp(-n * n);
+	};
+	const double punch  = gauss(np, 0.04, 0.040);
+	const double settle = gauss(np, 0.15, 0.070);
+	const float desired = static_cast<float>(0.20 * (punch - 0.22 * settle));
+	display->heart_scale_delta += (desired - display->heart_scale_delta) * 0.38f;
+}
+
+void draw_heart_icon(BpmDisplaySource *display)
+{
+	if (!display->heart_texture || display->heart_layout_size <= 0.0f)
+		return;
+
+	// Scale around the icon's center so the pulse looks natural.
+	const float scale = 1.0f + display->heart_scale_delta;
+	const float draw_size = display->heart_layout_size * scale;
+	const float cx = display->heart_layout_x + display->heart_layout_size * 0.5f;
+	const float cy = display->heart_layout_y + display->heart_layout_size * 0.5f;
+	const float draw_x = cx - draw_size * 0.5f;
+	const float draw_y = cy - draw_size * 0.5f;
+
+	gs_effect_t *effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
+	gs_eparam_t *image_param = gs_effect_get_param_by_name(effect, "image");
+	gs_effect_set_texture_srgb(image_param, display->heart_texture);
+
+	gs_blend_state_push();
+	gs_blend_function(GS_BLEND_SRCALPHA, GS_BLEND_INVSRCALPHA);
+	gs_matrix_push();
+	gs_matrix_translate3f(draw_x, draw_y, 0.0f);
+	while (gs_effect_loop(effect, "Draw"))
+		gs_draw_sprite(display->heart_texture, 0, (uint32_t)draw_size, (uint32_t)draw_size);
+	gs_matrix_pop();
+	gs_blend_state_pop();
+}
+
 void bpm_display_render(void *data, gs_effect_t *)
 {
 	auto *display = static_cast<BpmDisplaySource *>(data);
+
+	// Lazy-load the heart texture on the graphics thread.
+	ensure_heart_texture(display);
+
 	const DisplayValue value = display_value(display);
 	const std::string &text = value.text;
 	if (text.empty())
 		return;
+
+	// Compute layout: heart on the left, BPM text in the remaining region.
+	if (display->heart_texture) {
+		const float heart_size = (float)display->height * 0.70f;
+		const float gap        = (float)display->height * 0.06f;
+		display->heart_layout_size = heart_size;
+		display->heart_layout_x    = (float)display->width * 0.01f;
+		display->heart_layout_y    = ((float)display->height - heart_size) * 0.5f;
+		display->text_layout_x     = display->heart_layout_x + heart_size + gap;
+		display->text_layout_w     = (uint32_t)std::max(60.0f, (float)display->width - display->text_layout_x);
+	} else {
+		display->heart_layout_size = 0.0f;
+		display->text_layout_x     = 0.0f;
+		display->text_layout_w     = 0;
+	}
+
+	// Update the heart's beat-pulse animation.
+	update_heart_pulse(display, value.has_bpm ? value.bpm : 0.0);
+
+	// Draw heart icon (natural PNG colors; zone color applies to the number only).
+	draw_heart_icon(display);
 
 	const uint32_t color = display_color(display, value);
 	if (display->render_mode == RenderModeSystemFont) {
