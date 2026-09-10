@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include <graphics/image-file.h>
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -56,7 +58,7 @@ struct BpmDisplaySource {
 	bool cached_font_valid = false;
 	uint32_t cached_text_layout_w = 0;
 	// Heart icon
-	gs_texture_t *heart_texture = nullptr;
+	gs_image_file_ex_t heart_image = {};
 	bool heart_texture_tried = false;
 	double heart_beat_phase = 0.0;
 	float heart_scale_delta = 0.0f;
@@ -160,8 +162,7 @@ void bpm_display_destroy(void *data)
 	auto *display = static_cast<BpmDisplaySource *>(data);
 	if (display->text_texture)
 		gs_texture_destroy(display->text_texture);
-	if (display->heart_texture)
-		gs_texture_destroy(display->heart_texture);
+	gs_image_file_ex_free(&display->heart_image);
 	delete display;
 }
 
@@ -731,7 +732,8 @@ void ensure_heart_texture(BpmDisplaySource *display)
 	char *path = obs_module_file("heart.png");
 	if (!path)
 		return;
-	display->heart_texture = gs_texture_create_from_file(path);
+	gs_image_file_ex_init(&display->heart_image, path, GS_IMAGE_ALPHA_PREMULTIPLY);
+	gs_image_file_ex_init_texture(&display->heart_image);
 	bfree(path);
 }
 
@@ -764,7 +766,8 @@ void update_heart_pulse(BpmDisplaySource *display, double bpm)
 
 void draw_heart_icon(BpmDisplaySource *display)
 {
-	if (!display->heart_texture || display->heart_layout_w <= 0.0f || display->heart_layout_h <= 0.0f)
+	gs_texture_t *texture = display->heart_image.texture;
+	if (!texture || display->heart_layout_w <= 0.0f || display->heart_layout_h <= 0.0f)
 		return;
 
 	// Scale around the icon's center so the pulse looks natural.
@@ -781,14 +784,14 @@ void draw_heart_icon(BpmDisplaySource *display)
 
 	gs_effect_t *effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
 	gs_eparam_t *image_param = gs_effect_get_param_by_name(effect, "image");
-	gs_effect_set_texture_srgb(image_param, display->heart_texture);
+	gs_effect_set_texture_srgb(image_param, texture);
 
 	gs_blend_state_push();
 	gs_blend_function(GS_BLEND_ONE, GS_BLEND_INVSRCALPHA);
 	gs_matrix_push();
 	gs_matrix_translate3f(draw_x, draw_y, 0.0f);
 	while (gs_effect_loop(effect, "Draw"))
-		gs_draw_sprite(display->heart_texture, 0, (uint32_t)draw_w, (uint32_t)draw_h);
+		gs_draw_sprite(texture, 0, (uint32_t)draw_w, (uint32_t)draw_h);
 	gs_matrix_pop();
 	gs_blend_state_pop();
 
@@ -808,9 +811,9 @@ void bpm_display_render(void *data, gs_effect_t *)
 		return;
 
 	// Compute layout: heart on the left, BPM text in the remaining region.
-	if (display->heart_texture) {
-		const uint32_t tex_w = gs_texture_get_width(display->heart_texture);
-		const uint32_t tex_h = gs_texture_get_height(display->heart_texture);
+	if (display->heart_image.texture) {
+		const uint32_t tex_w = display->heart_image.cx;
+		const uint32_t tex_h = display->heart_image.cy;
 		const float aspect   = (tex_h > 0) ? (float)tex_w / (float)tex_h : 1.0f;
 
 		const float heart_h = (float)display->height * 0.70f;
