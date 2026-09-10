@@ -31,7 +31,7 @@ struct BpmDisplaySource {
 	uint32_t peak_color = 0xFF3B3BFF;
 	int render_mode = 0;
 	int digit_style = 0;
-	std::string font_face = "Helvetica Neue";
+	std::string font_face = "GS3 Obviously";
 	int font_size = 96;
 	int font_flags = OBS_FONT_BOLD;
 	bool use_zone_colors = false;
@@ -130,7 +130,7 @@ void bpm_display_update(void *data, obs_data_t *settings)
 	display->digit_style = (int)obs_data_get_int(settings, "digit_style");
 	if (obs_data_t *font = obs_data_get_obj(settings, "font")) {
 		const char *face = obs_data_get_string(font, "face");
-		display->font_face = (face && *face) ? face : "Helvetica Neue";
+		display->font_face = (face && *face) ? face : "GS3 Obviously";
 		display->font_size = (int)std::clamp(obs_data_get_int(font, "size"), 8LL, 512LL);
 		display->font_flags = (int)obs_data_get_int(font, "flags");
 		obs_data_release(font);
@@ -903,8 +903,8 @@ obs_properties_t *bpm_display_properties(void *)
 void bpm_display_defaults(obs_data_t *settings)
 {
 	obs_data_t *font = obs_data_create();
-	obs_data_set_default_string(font, "face", "Helvetica Neue");
-	obs_data_set_default_string(font, "style", "Bold");
+	obs_data_set_default_string(font, "face", "GS3 Obviously");
+	obs_data_set_default_string(font, "style", "Wide Bold");
 	obs_data_set_default_int(font, "size", 96);
 	obs_data_set_default_int(font, "flags", OBS_FONT_BOLD);
 	obs_data_set_default_obj(settings, "font", font);
