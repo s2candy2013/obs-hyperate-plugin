@@ -64,7 +64,8 @@ struct BpmDisplaySource {
 	// Per-frame layout (set in bpm_display_render)
 	float heart_layout_x = 0.0f;
 	float heart_layout_y = 0.0f;
-	float heart_layout_size = 0.0f;
+	float heart_layout_w = 0.0f;
+	float heart_layout_h = 0.0f;
 	float text_layout_x = 0.0f;
 	uint32_t text_layout_w = 0;
 };
@@ -763,29 +764,35 @@ void update_heart_pulse(BpmDisplaySource *display, double bpm)
 
 void draw_heart_icon(BpmDisplaySource *display)
 {
-	if (!display->heart_texture || display->heart_layout_size <= 0.0f)
+	if (!display->heart_texture || display->heart_layout_w <= 0.0f || display->heart_layout_h <= 0.0f)
 		return;
 
 	// Scale around the icon's center so the pulse looks natural.
 	const float scale = 1.0f + display->heart_scale_delta;
-	const float draw_size = display->heart_layout_size * scale;
-	const float cx = display->heart_layout_x + display->heart_layout_size * 0.5f;
-	const float cy = display->heart_layout_y + display->heart_layout_size * 0.5f;
-	const float draw_x = cx - draw_size * 0.5f;
-	const float draw_y = cy - draw_size * 0.5f;
+	const float draw_w = display->heart_layout_w * scale;
+	const float draw_h = display->heart_layout_h * scale;
+	const float cx = display->heart_layout_x + display->heart_layout_w * 0.5f;
+	const float cy = display->heart_layout_y + display->heart_layout_h * 0.5f;
+	const float draw_x = cx - draw_w * 0.5f;
+	const float draw_y = cy - draw_h * 0.5f;
+
+	const bool prev_srgb = gs_framebuffer_srgb_enabled();
+	gs_enable_framebuffer_srgb(true);
 
 	gs_effect_t *effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
 	gs_eparam_t *image_param = gs_effect_get_param_by_name(effect, "image");
 	gs_effect_set_texture_srgb(image_param, display->heart_texture);
 
 	gs_blend_state_push();
-	gs_blend_function(GS_BLEND_SRCALPHA, GS_BLEND_INVSRCALPHA);
+	gs_blend_function(GS_BLEND_ONE, GS_BLEND_INVSRCALPHA);
 	gs_matrix_push();
 	gs_matrix_translate3f(draw_x, draw_y, 0.0f);
 	while (gs_effect_loop(effect, "Draw"))
-		gs_draw_sprite(display->heart_texture, 0, (uint32_t)draw_size, (uint32_t)draw_size);
+		gs_draw_sprite(display->heart_texture, 0, (uint32_t)draw_w, (uint32_t)draw_h);
 	gs_matrix_pop();
 	gs_blend_state_pop();
+
+	gs_enable_framebuffer_srgb(prev_srgb);
 }
 
 void bpm_display_render(void *data, gs_effect_t *)
@@ -802,17 +809,25 @@ void bpm_display_render(void *data, gs_effect_t *)
 
 	// Compute layout: heart on the left, BPM text in the remaining region.
 	if (display->heart_texture) {
-		const float heart_size = (float)display->height * 0.70f;
-		const float gap        = (float)display->height * 0.06f;
-		display->heart_layout_size = heart_size;
-		display->heart_layout_x    = (float)display->width * 0.01f;
-		display->heart_layout_y    = ((float)display->height - heart_size) * 0.5f;
-		display->text_layout_x     = display->heart_layout_x + heart_size + gap;
-		display->text_layout_w     = (uint32_t)std::max(60.0f, (float)display->width - display->text_layout_x);
+		const uint32_t tex_w = gs_texture_get_width(display->heart_texture);
+		const uint32_t tex_h = gs_texture_get_height(display->heart_texture);
+		const float aspect   = (tex_h > 0) ? (float)tex_w / (float)tex_h : 1.0f;
+
+		const float heart_h = (float)display->height * 0.70f;
+		const float heart_w = heart_h * aspect;
+		const float gap     = (float)display->height * 0.06f;
+
+		display->heart_layout_w = heart_w;
+		display->heart_layout_h = heart_h;
+		display->heart_layout_x = (float)display->width * 0.02f;
+		display->heart_layout_y = ((float)display->height - heart_h) * 0.5f;
+		display->text_layout_x  = display->heart_layout_x + heart_w + gap;
+		display->text_layout_w  = (uint32_t)std::max(60.0f, (float)display->width - display->text_layout_x);
 	} else {
-		display->heart_layout_size = 0.0f;
-		display->text_layout_x     = 0.0f;
-		display->text_layout_w     = 0;
+		display->heart_layout_w = 0.0f;
+		display->heart_layout_h = 0.0f;
+		display->text_layout_x  = 0.0f;
+		display->text_layout_w  = 0;
 	}
 
 	// Update the heart's beat-pulse animation.
